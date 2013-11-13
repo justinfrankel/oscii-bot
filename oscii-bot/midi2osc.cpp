@@ -971,10 +971,8 @@ static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, 
     if (rec && rec->values.GetSize())
     {
       const char *fmt = rec->values.Get(0)->Get();
-      char fmt_type = 'f';
-      if (fmt[0] == 's' || fmt[0] == 'b' || fmt[0] == 'i') fmt_type = fmt[0];
-
-      if (fmt[0] && fmt[0] != '/') fmt++;
+      char fmt_type = 0;
+      if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
       int fmtcnt=validate_format(fmt);
       if (fmtcnt >= 0 && fmtcnt < 10)
@@ -1003,10 +1001,15 @@ static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, 
             wr.PushStringArg(tmp);
           }         
         }
-        else wr.PushFloatArg(*value);
-
-        wr.PushFloatArg(*value);
-
+        else if (fmt_type == 't')
+        {
+          // no parameter, just toggle
+        }
+        else 
+        {
+          // default to float
+          wr.PushFloatArg((float)*value);
+        }
 
         int l=0;
         const char *ret=wr.GetBuffer(&l);
