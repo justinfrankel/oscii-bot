@@ -1,3 +1,6 @@
+// midi2osc v0.1
+// Copyright (C) 2013 Cockos Incorporated
+// License: GPL
 #include <windows.h>
 #include <ctype.h>
 #include <math.h>
