@@ -312,31 +312,58 @@ struct oscOutputRec
 
 struct midiInputRec
 {
-  midiInputRec(int inputidx) 
+  midiInputRec(const char *namesubstr, int skipcnt) 
   { 
     // found device!
     dev_idx=0;
+    m_name_substr = strdup(namesubstr);
+    m_input_skipcnt=skipcnt;
     m_handle=0;
-    if (midiInOpen(&m_handle,inputidx,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
+    m_name_used=0;
+    do_open();
+  }
+
+  void do_open()
+  {
+    do_close();
+    m_lastmsgtime = GetTickCount();
+
+    int x;
+    const int n=midiInGetNumDevs();
+    int skipcnt = m_input_skipcnt;
+    for(x=0;x<n;x++)
     {
-      m_handle=0;
-    }
-    else
-    {
-      int x;
-      for (x = 0; x < 8; x ++)
+      MIDIINCAPS caps;
+      if (midiInGetDevCaps(x,&caps,sizeof(caps)) == MMSYSERR_NOERROR)
       {
-        const int bufsz=1024;
-        MIDIHDR *hdr=(MIDIHDR *)malloc(sizeof(MIDIHDR)+bufsz);
-        memset(hdr,0,sizeof(MIDIHDR));
-        hdr->dwBufferLength = bufsz;
-        hdr->lpData = (char *)(hdr+1);
-        m_longmsgs.Add(hdr);
+        if ((!m_name_substr[0] || strstr(caps.szPname,m_name_substr)) && !skipcnt--)
+        {
+          free(m_name_used);
+          m_name_used = strdup(caps.szPname);
+          if (midiInOpen(&m_handle,x,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
+          {
+            m_handle=0;
+          }
+          else
+          {
+            int x;
+            for (x = 0; x < 8; x ++)
+            {
+              const int bufsz=1024;
+              MIDIHDR *hdr=(MIDIHDR *)malloc(sizeof(MIDIHDR)+bufsz);
+              memset(hdr,0,sizeof(MIDIHDR));
+              hdr->dwBufferLength = bufsz;
+              hdr->lpData = (char *)(hdr+1);
+              m_longmsgs.Add(hdr);
+            }
+          }
+          break;
+        }
       }
     }
   }
-  ~midiInputRec() 
-  { 
+  void do_close()
+  {
     if (m_handle) 
     {
       midiInReset(m_handle);
@@ -357,8 +384,18 @@ struct midiInputRec
       m_longmsgs.Empty(true,free);
 
       midiInClose(m_handle); 
+      m_handle=0;
     }
   }
+
+  ~midiInputRec() 
+  { 
+    do_close();
+    free(m_name_substr);
+    free(m_name_used);
+  }
+
+
   void start() 
   { 
     if (m_handle) 
@@ -380,9 +417,10 @@ struct midiInputRec
       midiInStart(m_handle); 
     }
   }
-  void run()
+  void run(WDL_FastString &textOut)
   {
     int x;
+
     if (m_handle) for (x = 0; x < m_longmsgs.GetSize(); x ++)
     {
       MIDIHDR *hdr=m_longmsgs.Get(x);
@@ -402,12 +440,32 @@ struct midiInputRec
       }
     }
 
+    const DWORD now=GetTickCount();
+    if (now > m_lastmsgtime+5000) // every 5s of inactivity, query status
+    {
+      m_lastmsgtime = GetTickCount();
+      MIDIINCAPS caps;
+      if (!m_handle || midiInGetDevCaps((UINT)m_handle,&caps,sizeof(caps))!=MMSYSERR_NOERROR)
+      {
+        const bool had_handle=!!m_handle;
+        do_close();
+        do_open();
+        if (m_handle) 
+        {
+          textOut.AppendFormatted(1024,"Reopened device %s\r\n",m_name_used);
+          start();
+        }
+        else if (had_handle) textOut.AppendFormatted(1024,"Closed device %s\r\n",m_name_used);
+      }
+    }
   }
 
   HMIDIIN m_handle;
   EEL_F *dev_idx;
   WDL_PtrList<MIDIHDR> m_longmsgs;
-
+  char *m_name_substr,*m_name_used;
+  int m_input_skipcnt;
+  DWORD m_lastmsgtime;
 
   static void CALLBACK callbackFunc(
     HMIDIIN hMidiIn,  
@@ -420,6 +478,7 @@ struct midiInputRec
     midiInputRec *_this = (midiInputRec*)dwInstance;
     if (wMsg == MIM_DATA )
     {
+      if (_this) _this->m_lastmsgtime = GetTickCount();
 
       if (g_incoming_events.Available() < 2048)
       {
@@ -669,32 +728,18 @@ void reloadScript(WDL_FastString &results)
             const char *substr = lp.gettoken_str(2);
             int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
 
-            const int n=midiInGetNumDevs();
-            for(x=0;x<n;x++)
+            midiInputRec *rec = new midiInputRec(substr,skipcnt);
+            if (!rec->m_handle)
             {
-              MIDIINCAPS caps;
-              if (midiInGetDevCaps(x,&caps,sizeof(caps)) == MMSYSERR_NOERROR)
-              {
-                if ((!substr[0] || strstr(caps.szPname,substr)) && !skipcnt--)
-                {
-                  midiInputRec *rec = new midiInputRec(x);
-                  if (!rec->m_handle)
-                  {
-                    results.AppendFormatted(1024,"Warning: tried to open device '%s' but failed\r\n",caps.szPname);
-                    delete rec;
-                  }
-                  else
-                  {
-                    rec->dev_idx = NSEEL_VM_regvar(g_vm,lp.gettoken_str(1));
-                    if (rec->dev_idx) rec->dev_idx[0] = g_inputs.GetSize() + INPUT_INDEX_BASE;
-                    g_inputs.Add(rec);
-                  }
+              if (rec->m_name_used)
+                results.AppendFormatted(1024,"Warning: tried to open device '%s' but failed\r\n",rec->m_name_used);
+              else
+                results.AppendFormatted(1024,"Warning: tried to open device matching '%s'(%d) but failed, will retry\r\n",substr,skipcnt);
 
-                  break;
-                }
-              }
             }
-
+            rec->dev_idx = NSEEL_VM_regvar(g_vm,lp.gettoken_str(1));
+            if (rec->dev_idx) rec->dev_idx[0] = g_inputs.GetSize() + INPUT_INDEX_BASE;
+            g_inputs.Add(rec);
           }
         }
       }
@@ -799,6 +844,7 @@ void reloadScript(WDL_FastString &results)
 
 WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+  static WDL_FastString results;
   switch (uMsg)
   {
     case WM_INITDIALOG:
@@ -820,7 +866,15 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
       {
         // periodically update IDC_LASTMSG with new message(s?), if changed
         int x;
-        for (x=0;x<g_inputs.GetSize();x++) g_inputs.Get(x)->run();
+        int asz=results.GetLength();
+        for (x=0;x<g_inputs.GetSize();x++) 
+        {
+          g_inputs.Get(x)->run(results);
+        }
+        if (results.GetLength() != asz)
+        {
+          SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
+        }
 
         if (g_var_time) *g_var_time = timeGetTime()/1000.0;
 
@@ -891,7 +945,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         break;
         case IDC_BUTTON1:
           {
-            WDL_FastString results;
+            results.Set("");
             reloadScript(results);
             SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
           }
