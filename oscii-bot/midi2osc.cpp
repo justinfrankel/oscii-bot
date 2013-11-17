@@ -614,7 +614,7 @@ void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString 
     rdptr++;
   }
 
-  g_code[parsestate]=NSEEL_code_compile(g_vm,procOut.Get(),lineoffs);
+  g_code[parsestate]=NSEEL_code_compile_ex(g_vm,procOut.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);
   if (!parsestate && g_code[0])
   {
     if (g_var_time) *g_var_time = timeGetTime()/1000.0;
@@ -810,7 +810,7 @@ void reloadScript(WDL_FastString &results)
           }
           else
           {
-            results.AppendFormatted(1024,"Warning: line '%.100s' (and possibly more)' are not in valid section and may be ignored\r\n");
+            results.AppendFormatted(1024,"Warning: line '%.100s' (and possibly more)' are not in valid section and may be ignored\r\n", linebuf);
             parsestate=-2;
           }
         }
