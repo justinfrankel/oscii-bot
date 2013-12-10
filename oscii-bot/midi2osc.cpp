@@ -42,25 +42,101 @@ static void BSWAPINTMEM(void *buf)
 BOOL systray_add(HWND hwnd, UINT uID, HICON hIcon, LPSTR lpszTip);
 BOOL systray_del(HWND hwnd, UINT uID);
 
+int g_recent_events[4];
+
+
+class outputDevice {
+  protected:
+    outputDevice() { }
+  public:
+    virtual ~outputDevice() { }
+    virtual void run()=0;
+    virtual void oscSend(const char *src, int len) { }
+    virtual const char *get_type()=0;
+};
+
+class inputDevice {
+  protected:
+    inputDevice() { }
+  public:
+    virtual ~inputDevice() { };
+    virtual void start()=0;
+    virtual void run(WDL_FastString &textOut)=0;
+    virtual const char *get_type()=0;
+
+    WDL_PtrKeyedArray<EEL_F *> m_instances;
+};
+
 struct incomingEvent 
 {
   EEL_F *dev_ptr;
   unsigned char msg[3];
 };
 
-int g_recent_events[4];
-
-WDL_TypedQueue<incomingEvent> g_incoming_events; // format: 
-WDL_Mutex g_incoming_events_mutex;
-
-struct formatStringRec
+class formatStringRec
 {
-  formatStringRec() { }
-  ~formatStringRec() { values.Empty(true); }
+  public:
+    formatStringRec() { }
+    ~formatStringRec() { values.Empty(true); }
 
-  WDL_PtrList<WDL_FastString> values; // first is mandatory, following are optional
+    WDL_PtrList<WDL_FastString> values; // first is mandatory, following are optional
 };
 
+class scriptInstance 
+{
+  public:
+    scriptInstance(const char *fn) 
+    { 
+      m_fn.Set(fn);
+      m_var_time = 0;
+      memset(m_var_msgs,0,sizeof(m_var_msgs));
+      memset(m_var_oscfmt,0,sizeof(m_var_oscfmt));
+      m_vm=0;
+      memset(m_code,0,sizeof(m_code));
+    }
+    ~scriptInstance() 
+    {
+      m_formats.Empty(true);
+      int x;
+      for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
+      {
+        if (m_code[x]) NSEEL_code_free(m_code[x]);
+        m_code[x]=0;
+      }
+      if (m_vm) NSEEL_VM_free(m_vm);
+    }
+    void reloadScript(WDL_FastString &results);
+
+    void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
+    WDL_String m_fn;
+
+    WDL_TypedQueue<incomingEvent> m_incoming_events; 
+    WDL_Mutex m_incoming_events_mutex;
+
+    WDL_PtrList<formatStringRec> m_formats;
+
+    EEL_F *m_var_time, *m_var_msgs[4], *m_var_oscfmt[10];
+    NSEEL_VMCTX m_vm;
+    NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
+
+    enum {
+        FORMAT_INDEX_BASE=0x10000,
+        INPUT_INDEX_BASE =0x40000,
+        OUTPUT_INDEX_BASE=0x50000
+    };
+    static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
+};
+
+
+WDL_PtrList<scriptInstance> g_scripts;
+WDL_PtrList<inputDevice> g_inputs;
+WDL_PtrList<outputDevice> g_outputs;
+
+
+
+
+
+const char *g_code_names[4] = { "@init", "@timer", "@msg", "@oscmsg" };
 
 class OscMessageWrite
 {
@@ -182,12 +258,14 @@ private:
   char* m_arg_ptr;
 };
 
-
-struct oscOutputRec
+class oscOutputDevice : public outputDevice
 {
-  oscOutputRec(const char *dest, int maxpacket, int sendsleep) 
-  { 
+public:
+  oscOutputDevice(const char *dest, int maxpacket, int sendsleep) 
+  {
     memset(&m_sendaddr, 0, sizeof(m_sendaddr));
+
+    m_dest.Set(dest);
 
     WDL_String tmp(dest);
     int sendport=0;
@@ -213,7 +291,7 @@ struct oscOutputRec
     }
 
   }
-  ~oscOutputRec() 
+  virtual ~oscOutputDevice() 
   { 
     if (m_sendsock >= 0)
     {
@@ -221,9 +299,9 @@ struct oscOutputRec
       closesocket(m_sendsock);
       m_sendsock=-1;
     }
-  }
+  } 
 
-  void run()
+  virtual void run()
   {
     static char hdr[16] = { '#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 1, 0, 0, 0 };
 
@@ -292,7 +370,8 @@ struct oscOutputRec
 
     m_sendq.Clear();
   }
-  void doSend(const char *src, int len)
+
+  virtual void oscSend(const char *src, int len)
   {
     if (!m_sendq.GetSize()) m_sendq.Add(NULL,16);
 
@@ -301,29 +380,43 @@ struct oscOutputRec
     m_sendq.Add(&tlen,sizeof(tlen));
     m_sendq.Add(src,len);
   }
+  virtual const char *get_type() { return "OSC"; }
+
 
   int m_sendsock;
   int m_maxpacketsz, m_sendsleep;
   struct sockaddr_in m_sendaddr;
   WDL_Queue m_sendq;
+  WDL_String m_dest;
 };
 
 
-
-struct midiInputRec
+class midiInputDevice : public inputDevice
 {
-  midiInputRec(const char *namesubstr, int skipcnt) 
-  { 
+public:
+  midiInputDevice(const char *namesubstr, int skipcnt) 
+  {
     // found device!
-    dev_idx=0;
     m_name_substr = strdup(namesubstr);
     m_input_skipcnt=skipcnt;
     m_handle=0;
     m_name_used=0;
-    do_open();
+    m_open_would_use_altdev = NULL;
+    m_last_dev_idx=-1;
+    
+    do_open(true);
   }
 
-  void do_open()
+  virtual ~midiInputDevice() 
+  { 
+    do_close();
+    free(m_name_substr);
+    free(m_name_used);
+  }
+
+  virtual const char *get_type() { return "MIDI"; }
+
+  void do_open(bool allowReuseOtherDev)
   {
     do_close();
     m_lastmsgtime = GetTickCount();
@@ -340,6 +433,26 @@ struct midiInputRec
         {
           free(m_name_used);
           m_name_used = strdup(caps.szPname);
+
+          if (allowReuseOtherDev)
+          {
+            int x;
+            for (x=0;x<g_inputs.GetSize();x++)
+            {
+              inputDevice *dev=g_inputs.Get(x);
+              if (dev && !strcmp(dev->get_type(),"MIDI"))
+              {
+                midiInputDevice *mid = (midiInputDevice *)dev;
+                if (mid->m_last_dev_idx == x)
+                {
+                  m_open_would_use_altdev = mid;
+                  return;
+                }
+              }
+            }
+          }
+
+          m_last_dev_idx = x;
           if (midiInOpen(&m_handle,x,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
           {
             m_handle=0;
@@ -388,15 +501,7 @@ struct midiInputRec
     }
   }
 
-  ~midiInputRec() 
-  { 
-    do_close();
-    free(m_name_substr);
-    free(m_name_used);
-  }
-
-
-  void start() 
+  virtual void start() 
   { 
     if (m_handle) 
     {
@@ -417,7 +522,7 @@ struct midiInputRec
       midiInStart(m_handle); 
     }
   }
-  void run(WDL_FastString &textOut)
+  virtual void run(WDL_FastString &textOut)
   {
     int x;
 
@@ -460,13 +565,6 @@ struct midiInputRec
     }
   }
 
-  HMIDIIN m_handle;
-  EEL_F *dev_idx;
-  WDL_PtrList<MIDIHDR> m_longmsgs;
-  char *m_name_substr,*m_name_used;
-  int m_input_skipcnt;
-  DWORD m_lastmsgtime;
-
   static void CALLBACK callbackFunc(
     HMIDIIN hMidiIn,  
     UINT wMsg,        
@@ -475,45 +573,53 @@ struct midiInputRec
     LPARAM dwParam2    
   )
   {
-    midiInputRec *_this = (midiInputRec*)dwInstance;
+    midiInputDevice *_this = (midiInputDevice*)dwInstance;
     if (wMsg == MIM_DATA )
     {
-      if (_this) _this->m_lastmsgtime = GetTickCount();
-
-      if (g_incoming_events.Available() < 2048)
+      if (_this) 
       {
         incomingEvent item;
-        item.dev_ptr = _this ? _this->dev_idx : NULL;
         item.msg[0]=(unsigned char)(dwParam1&0xff);
         item.msg[1]=(unsigned char)((dwParam1>>8)&0xff);
         item.msg[2]=(unsigned char)((dwParam1>>16)&0xff);
-        g_incoming_events_mutex.Enter();
-        g_incoming_events.Add(&item,1);
-        g_incoming_events_mutex.Leave();
+
+        _this->m_lastmsgtime = GetTickCount();
+
+        int x;
+        const int n=_this->m_instances.GetSize();
+        for (x=0;x<n; x++)
+        {
+          scriptInstance *script = NULL;
+          item.dev_ptr = _this->m_instances.Enumerate(x,(INT_PTR *)&script);
+
+          if (script && script->m_incoming_events.Available() < 2048)
+          {
+            script->m_incoming_events_mutex.Enter();
+            script->m_incoming_events.Add(&item,1);
+            script->m_incoming_events_mutex.Leave();
+          }
+        }
       }
     }
   }
+
+  HMIDIIN m_handle;
+  WDL_PtrList<MIDIHDR> m_longmsgs;
+  char *m_name_substr,*m_name_used;
+  int m_input_skipcnt;
+  DWORD m_lastmsgtime;
+
+  midiInputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in g_inputs
+  int m_last_dev_idx;
+
 };
 
 
-WDL_PtrList<formatStringRec> g_formats;
-WDL_PtrList<midiInputRec> g_inputs;
-WDL_PtrList<oscOutputRec> g_outputs;
-
-#define FORMAT_INDEX_BASE 0x10000
-#define INPUT_INDEX_BASE  0x40000
-#define OUTPUT_INDEX_BASE 0x50000
-
-EEL_F *g_var_time, *g_var_msgs[4], *g_var_oscfmt[10];
-NSEEL_VMCTX g_vm;
-const char *g_code_names[3] = { "@init", "@timer", "@msg" };
-NSEEL_CODEHANDLE g_code[3]; // init, timer, message code
-
-void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs)
+void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs)
 {
-  if (parsestate<0 || parsestate >= sizeof(g_code)/sizeof(g_code[0])) return;
+  if (parsestate<0 || parsestate >= sizeof(m_code)/sizeof(m_code[0])) return;
 
-  if (g_code[parsestate])
+  if (m_code[parsestate])
   {
     results.AppendFormatted(1024,"Warning: duplicate %s sections, ignoring later copy\r\n",g_code_names[parsestate]);
     return;
@@ -522,7 +628,7 @@ void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString 
 
   WDL_FastString procOut;
   const char *rdptr = curblock.Get();
-  // preprocess to get formats from { }, and replace with an index of FORMAT_INDEX_BASE+g_formats.GetSize()
+  // preprocess to get formats from { }, and replace with an index of FORMAT_INDEX_BASE+m_formats.GetSize()
   int state=0; 
   // states:
   // 1 = comment to end of line
@@ -591,8 +697,8 @@ void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString 
             results.AppendFormatted(1024,"Warning: in %s: { } specified with no strings\r\n",g_code_names[parsestate]);
           }
 
-          procOut.AppendFormatted(128,"(%d)",FORMAT_INDEX_BASE+g_formats.GetSize());
-          g_formats.Add(r);
+          procOut.AppendFormatted(128,"(%d)",FORMAT_INDEX_BASE+m_formats.GetSize());
+          m_formats.Add(r);
           if (*rdptr) rdptr++;
 
           continue;
@@ -614,355 +720,18 @@ void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString 
     rdptr++;
   }
 
-  g_code[parsestate]=NSEEL_code_compile_ex(g_vm,procOut.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);
-  if (!parsestate && g_code[0])
+  m_code[parsestate]=NSEEL_code_compile_ex(m_vm,procOut.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);
+  if (!parsestate && m_code[0])
   {
-    if (g_var_time) *g_var_time = timeGetTime()/1000.0;
-    NSEEL_code_execute(g_code[0]);
+    if (m_var_time) *m_var_time = timeGetTime()/1000.0;
+    NSEEL_code_execute(m_code[0]);
   }
 
   char *err;
-  if (!g_code[parsestate] && (err=NSEEL_code_getcodeerror(g_vm)))
+  if (!m_code[parsestate] && (err=NSEEL_code_getcodeerror(m_vm)))
   {
     results.AppendFormatted(1024,"Error: in %s: %s\r\n",g_code_names[parsestate], err);
   }
-
-}
-
-// outputs
-
-
-void NSEEL_HOSTSTUB_EnterMutex() { }
-void NSEEL_HOSTSTUB_LeaveMutex() { }
-
-WDL_FastString cfgfile;
-
-void reloadScript(WDL_FastString &results)
-{
-  g_inputs.Empty(true);
-  g_formats.Empty(true);
-  g_outputs.Empty(true);
-
-  // no other threads should be going now
-  g_incoming_events.Clear();
-
-  int x;
-  for (x=0;x<sizeof(g_code)/sizeof(g_code[0]); x++) 
-  {
-    if (g_code[x]) NSEEL_code_free(g_code[x]);
-    g_code[x]=0;
-  }
-
-  if (g_vm) NSEEL_VM_free(g_vm);
-  g_vm = NSEEL_VM_alloc();
-  g_var_time = NSEEL_VM_regvar(g_vm,"time");
-  g_var_msgs[0] = NSEEL_VM_regvar(g_vm,"msg1");
-  g_var_msgs[1] = NSEEL_VM_regvar(g_vm,"msg2");
-  g_var_msgs[2] = NSEEL_VM_regvar(g_vm,"msg3");
-  g_var_msgs[3] = NSEEL_VM_regvar(g_vm,"msgdev");
-  for (x=0;x<sizeof(g_var_oscfmt)/sizeof(g_var_oscfmt[0]);x++)
-  {
-    char tmp[32];
-    sprintf(tmp,"oscfmt%d",x);
-    g_var_oscfmt[x] = NSEEL_VM_regvar(g_vm,tmp);
-  }
-
-  // todo: register some vars: time, msg1, msg2, msg3, msgdev, oscfmt0-10
-
-  FILE *fp = fopen(cfgfile.Get(),"r");
-  if (!fp)
-  {
-    results.Append("Error: failed opening: ");
-    results.Append(cfgfile.Get());
-    results.Append("\r\n");
-    return;
-  }
-
-  bool comment_state=false;
-  int parsestate=-1,cursec_lineoffs=0,lineoffs=0;
-  WDL_FastString curblock;
-  for (;;)
-  {
-    char linebuf[8192];
-    linebuf[0]=0;
-    fgets(linebuf,sizeof(linebuf),fp);
-    lineoffs++;
-
-    if (!linebuf[0]) break;
-
-    {
-      char *p=linebuf;
-      while (*p) p++;
-      p--;
-      while (p >= linebuf && (*p == '\r' || *p == '\n')) { *p=0; p--; }
-    }
-
-    LineParser lp(comment_state);
-    if (linebuf[0] && !lp.parse(linebuf) && lp.getnumtokens()> 0 && lp.gettoken_str(0)[0] == '@')
-    {
-      const char *tok=lp.gettoken_str(0);
-      int x;
-      for (x=0;x<sizeof(g_code_names)/sizeof(g_code_names[0]) && strcmp(tok,g_code_names[x]);x++);
-
-      if (x < sizeof(g_code_names)/sizeof(g_code_names[0]))
-      {
-        compileCode(parsestate,curblock,results,cursec_lineoffs);
-        parsestate=x;
-        cursec_lineoffs=lineoffs;
-        curblock.Set("");
-      }
-      else if (!strcmp(tok,"@input"))
-      {
-        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
-        {
-          results.Append("Usage: @input devicehandle \"substring devicename match\" [skip_count]\r\n");
-        }
-        else
-        {
-          if (NSEEL_VM_get_var_refcnt(g_vm,lp.gettoken_str(1))>=0)
-          {
-            results.AppendFormatted(1024,"Warning: device name '%s' already in use, skipping @input line\r\n",lp.gettoken_str(1));
-          }
-          else
-          {
-            const char *substr = lp.gettoken_str(2);
-            int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
-
-            midiInputRec *rec = new midiInputRec(substr,skipcnt);
-            if (!rec->m_handle)
-            {
-              if (rec->m_name_used)
-                results.AppendFormatted(1024,"Warning: tried to open device '%s' but failed\r\n",rec->m_name_used);
-              else
-                results.AppendFormatted(1024,"Warning: tried to open device matching '%s'(%d) but failed, will retry\r\n",substr,skipcnt);
-
-            }
-            rec->dev_idx = NSEEL_VM_regvar(g_vm,lp.gettoken_str(1));
-            if (rec->dev_idx) rec->dev_idx[0] = g_inputs.GetSize() + INPUT_INDEX_BASE;
-            g_inputs.Add(rec);
-          }
-        }
-      }
-      else if (!strcmp(tok,"@output"))
-      {
-        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
-        {
-          results.Append("Usage: @output devicehandle \"host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\r\n");
-        }
-        else
-        {
-          if (NSEEL_VM_get_var_refcnt(g_vm,lp.gettoken_str(1))>=0)
-          {
-            results.AppendFormatted(1024,"Warning: device name '%s' already in use, skipping @output line\r\n",lp.gettoken_str(1));
-          }
-          else
-          {
-            // oscOutputRec
-            oscOutputRec *r = new oscOutputRec(lp.gettoken_str(2), 
-              lp.getnumtokens()>=4 ? lp.gettoken_int(3) : 0,
-              lp.getnumtokens()>=5 ? lp.gettoken_int(4) : -1);
-
-            if (r->m_sendsock<0)
-            {
-              results.AppendFormatted(1024,"Warning: failed creating destination for @output '%s' -> '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(2));
-              delete r;
-            }
-            else
-            {
-              EEL_F *var=NSEEL_VM_regvar(g_vm,lp.gettoken_str(1));
-              if (var) *var=g_outputs.GetSize() + OUTPUT_INDEX_BASE;
-              g_outputs.Add(r);
-            }
-          }
-        }
-      }
-      else
-      {
-        results.AppendFormatted(1024,"Warning: Unknown directive: %s\r\n",tok);
-      }
-    }
-    else
-    {
-      const char *p=linebuf;
-      if (parsestate==-3)
-      {
-        while (*p)
-        {
-          if (p[0] == '*' && p[1]== '/')
-          {
-            parsestate=-1; // end of comment!
-            p+=2;
-            break;
-          }
-        }
-      }
-      if (parsestate==-1 && p[0])
-      {
-        while (*p == ' ' || *p =='\t') p++;
-        if (!*p || (p[0] == '/' && p[1] == '/'))
-        {
-        }
-        else
-        {
-          if (*p == '/' && p[1] == '*')
-          {
-            parsestate=-3;
-          }
-          else
-          {
-            results.AppendFormatted(1024,"Warning: line '%.100s' (and possibly more)' are not in valid section and may be ignored\r\n", linebuf);
-            parsestate=-2;
-          }
-        }
-      }
-      if (parsestate>=0)
-      {
-        curblock.Append(linebuf);
-        curblock.Append("\n");
-      }
-    }
-  }
-  compileCode(parsestate,curblock,results,cursec_lineoffs);
-
-
-  fclose(fp);
-
-  if (!g_inputs.GetSize()) results.Append("Warning: No @input opened\r\n");
-  if (!g_outputs.GetSize()) results.Append("Warning: No @output opened\r\n");
-  if (!g_formats.GetSize()) results.Append("Warning: No formats appear to be defined in code using { }\r\n");
-
-  results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",g_inputs.GetSize(),g_outputs.GetSize(),g_formats.GetSize());
-
-  for (x=0;x<g_inputs.GetSize();x++)
-  {
-    midiInputRec *rec=g_inputs.Get(x);
-    if (rec) rec->start();
-  }
-
-}
-
-
-WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-  static WDL_FastString results;
-  switch (uMsg)
-  {
-    case WM_INITDIALOG:
-      // lParam = config file
-      {
-        HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
-        SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
-        systray_add(hwndDlg, 0, (HICON)icon, "Cockos midi2osc");
-
-        SendMessage(hwndDlg,WM_COMMAND,IDC_BUTTON1,0);
-        SetTimer(hwndDlg,1,10,NULL);
-      }
-    return 1;
-    case WM_CLOSE:
-      ShowWindow(hwndDlg,SW_HIDE);
-    return 1;
-    case WM_TIMER:
-      if (wParam == 1)
-      {
-        // periodically update IDC_LASTMSG with new message(s?), if changed
-        int x;
-        int asz=results.GetLength();
-        for (x=0;x<g_inputs.GetSize();x++) 
-        {
-          g_inputs.Get(x)->run(results);
-        }
-        if (results.GetLength() != asz)
-        {
-          SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
-        }
-
-        if (g_var_time) *g_var_time = timeGetTime()/1000.0;
-
-        bool needUIupdate=false;
-
-        if (g_incoming_events.Available())
-        {
-          static WDL_TypedBuf<incomingEvent> tmp;
-
-          g_incoming_events_mutex.Enter();
-          tmp.Resize(g_incoming_events.Available(),false);
-          if (tmp.GetSize()==g_incoming_events.Available())
-          {
-            memcpy(tmp.Get(),g_incoming_events.Get(),tmp.GetSize()*sizeof(incomingEvent));
-          }
-          else
-          {
-            tmp.Resize(0,false);
-          }
-          g_incoming_events.Clear();
-          g_incoming_events_mutex.Leave();
-
-          for (x=0;x<tmp.GetSize();x++)
-          {
-            incomingEvent *evt = tmp.Get()+x;
-
-            int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
-            if (g_recent_events[0] != asInt)
-            {
-              memmove(g_recent_events+1,g_recent_events,sizeof(g_recent_events)-sizeof(g_recent_events[0]));
-              g_recent_events[0]=asInt;
-              needUIupdate=true;
-            }
-
-
-            if (g_var_msgs[0]) g_var_msgs[0][0] = evt->msg[0];
-            if (g_var_msgs[1]) g_var_msgs[1][0] = evt->msg[1];
-            if (g_var_msgs[2]) g_var_msgs[2][0] = evt->msg[2];
-            if (g_var_msgs[3]) g_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
-            NSEEL_code_execute(g_code[2]);
-          }
-        }
-        if (g_vm && g_code[1]) NSEEL_code_execute(g_code[1]); // timer follows messages
-
-        for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run();  // send queued messages
-
-        if (needUIupdate)
-        {
-          static WDL_FastString s;
-          s.Set("");
-          int x;
-          for(x=0;x<sizeof(g_recent_events)/sizeof(g_recent_events[0]);x++)
-          {
-            int a = g_recent_events[x];
-            if (!a) break;
-            s.AppendFormatted(64,"%02x:%02x:%02x ",(a>>16)&0xff,(a>>8)&0xff,a&0xff);
-          }
-          SetDlgItemText(hwndDlg,IDC_LASTMSG,s.Get());
-        }
-      }
-    return 0;
-    case WM_COMMAND:
-      switch (LOWORD(wParam))
-      {
-        case IDCANCEL:
-          systray_del(hwndDlg,0);
-          EndDialog(hwndDlg,1);
-        break;
-        case IDC_BUTTON1:
-          {
-            results.Set("");
-            reloadScript(results);
-            SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
-          }
-        break;
-      }
-    return 0;
-    case WM_SYSTRAY:
-			switch (LOWORD(lParam))
-			{
-        case WM_LBUTTONDBLCLK:
-          ShowWindow(hwndDlg,SW_SHOW);
-          SetForegroundWindow(hwndDlg);
-        return 0;
-      }
-    return 0;
-  }
-  return 0;
 }
 
 static int validate_format(const char *fmt)
@@ -1018,13 +787,14 @@ static int validate_format(const char *fmt)
   return state? -1 : cnt;
 }
 
-static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
+EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
 {
+  scriptInstance *_this = (scriptInstance*)opaque;
   int output_idx = (int) floor(*dest_device+0.5);
-  oscOutputRec *output = g_outputs.Get(output_idx - OUTPUT_INDEX_BASE);
-  if (output || output_idx == -1)
+  outputDevice *output = g_outputs.Get(output_idx - OUTPUT_INDEX_BASE);
+  if (_this && (output || output_idx == -1))
   {
-    formatStringRec *rec = g_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
+    formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
     if (rec && rec->values.GetSize())
     {
       const char *fmt = rec->values.Get(0)->Get();
@@ -1035,7 +805,7 @@ static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, 
       if (fmtcnt >= 0 && fmtcnt < 10)
       {
         char buf[1024];
-#define FOO(x) (g_var_oscfmt[x] ? g_var_oscfmt[x][0]:0.0)
+#define FOO(x) (m_var_oscfmt[x] ? m_var_oscfmt[x][0]:0.0)
         WDL_snprintf(buf,sizeof(buf),fmt, FOO(0),FOO(1),FOO(2),FOO(3),FOO(4),FOO(5),FOO(6),FOO(7),FOO(8),FOO(9));
 #undef FOO
 
@@ -1074,20 +844,443 @@ static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, 
         {
           if (output)
           {
-            output->doSend(ret,l);
+            output->oscSend(ret,l);
           }
           else
           {
             int n;
             for (n=0;n<g_outputs.GetSize();n++)
-              g_outputs.Get(n)->doSend(ret,l);
+              g_outputs.Get(n)->oscSend(ret,l);
           }
         }
       }
-
     }
   }
   return value;
+}
+
+
+void scriptInstance::reloadScript(WDL_FastString &results)
+{
+  m_formats.Empty(true);
+
+  // no other threads should be going now
+  m_incoming_events.Clear();
+
+  int x;
+  for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
+  {
+    if (m_code[x]) NSEEL_code_free(m_code[x]);
+    m_code[x]=0;
+  }
+
+  if (m_vm) NSEEL_VM_free(m_vm);
+  m_vm = NSEEL_VM_alloc();
+  NSEEL_VM_SetCustomFuncThis(m_vm,this);
+
+  m_var_time = NSEEL_VM_regvar(m_vm,"time");
+  m_var_msgs[0] = NSEEL_VM_regvar(m_vm,"msg1");
+  m_var_msgs[1] = NSEEL_VM_regvar(m_vm,"msg2");
+  m_var_msgs[2] = NSEEL_VM_regvar(m_vm,"msg3");
+  m_var_msgs[3] = NSEEL_VM_regvar(m_vm,"msgdev");
+  for (x=0;x<sizeof(m_var_oscfmt)/sizeof(m_var_oscfmt[0]);x++)
+  {
+    char tmp[32];
+    sprintf(tmp,"oscfmt%d",x);
+    m_var_oscfmt[x] = NSEEL_VM_regvar(m_vm,tmp);
+  }
+
+  results.Append("Loading: ");
+  results.Append(m_fn.Get());
+  results.Append("\r\n");
+
+  FILE *fp = fopen(m_fn.Get(),"r");
+  if (!fp)
+  {
+    results.Append("Error: failed opening: ");
+    results.Append(m_fn.Get());
+    results.Append("\r\n");
+    return;
+  }
+
+  bool comment_state=false;
+  int parsestate=-1,cursec_lineoffs=0,lineoffs=0;
+  WDL_FastString curblock;
+  int inputs_used=0, outputs_used=0;
+  for (;;)
+  {
+    char linebuf[8192];
+    linebuf[0]=0;
+    fgets(linebuf,sizeof(linebuf),fp);
+    lineoffs++;
+
+    if (!linebuf[0]) break;
+
+    {
+      char *p=linebuf;
+      while (*p) p++;
+      p--;
+      while (p >= linebuf && (*p == '\r' || *p == '\n')) { *p=0; p--; }
+    }
+
+    LineParser lp(comment_state);
+    if (linebuf[0] && !lp.parse(linebuf) && lp.getnumtokens()> 0 && lp.gettoken_str(0)[0] == '@')
+    {
+      const char *tok=lp.gettoken_str(0);
+      int x;
+      for (x=0;x<sizeof(g_code_names)/sizeof(g_code_names[0]) && strcmp(tok,g_code_names[x]);x++);
+
+      if (x < sizeof(g_code_names)/sizeof(g_code_names[0]))
+      {
+        compileCode(parsestate,curblock,results,cursec_lineoffs);
+        parsestate=x;
+        cursec_lineoffs=lineoffs;
+        curblock.Set("");
+      }
+      else if (!strcmp(tok,"@input"))
+      {
+        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
+        {
+          results.Append("Usage: @input devicehandle \"substring devicename match\" [skip_count]\r\n");
+        }
+        else
+        {
+          if (NSEEL_VM_get_var_refcnt(m_vm,lp.gettoken_str(1))>=0)
+          {
+            results.AppendFormatted(1024,"Warning: device name '%s' already in use, skipping @input line\r\n",lp.gettoken_str(1));
+          }
+          else
+          {
+            inputs_used++;
+
+            const char *dp = lp.gettoken_str(2);
+            if (!strnicmp(dp,"OSC:",4))
+            {
+              dp += 4;
+              while (*dp == ' ') dp++;
+              results.AppendFormatted(1024,"Warning: todo: @input MIDI: support");
+
+            }
+            else
+            {
+              if (!strnicmp(dp,"MIDI:",5))
+              {
+                dp += 5;
+                while (*dp == ' ') dp++;
+              }
+              const char *substr = dp;
+              int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
+
+              midiInputDevice *rec = new midiInputDevice(substr,skipcnt);
+              bool is_reuse=false;
+              if (!rec->m_handle)
+              {
+                if (rec->m_open_would_use_altdev)
+                {
+                  midiInputDevice *tmp=rec->m_open_would_use_altdev;
+                  delete rec;
+                  rec=tmp;
+                  is_reuse=true;
+
+                  if (!rec->m_handle)
+                    results.AppendFormatted(1024,"Warning: attached to un-opened device '%s'\r\n",rec->m_name_used);
+                  else
+                    results.AppendFormatted(1024,"Attached to device '%s'\r\n",rec->m_name_used);
+                }
+                else if (rec->m_name_used)
+                  results.AppendFormatted(1024,"Warning: tried to open device '%s' but failed\r\n",rec->m_name_used);
+                else
+                  results.AppendFormatted(1024,"Warning: tried to open device matching '%s'(%d) but failed, will retry\r\n",substr,skipcnt);
+              }
+              EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+              if (dev_idx) 
+                dev_idx[0] = (is_reuse ? g_inputs.Find(rec) : g_inputs.GetSize()) + INPUT_INDEX_BASE;
+              rec->m_instances.Insert((INT_PTR)this,dev_idx);
+              if (!is_reuse) g_inputs.Add(rec);
+            }
+          }
+        }
+      }
+      else if (!strcmp(tok,"@output"))
+      {
+        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
+        {
+          results.Append("Usage: @output devicehandle \"host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\r\n");
+        }
+        else
+        {
+          if (NSEEL_VM_get_var_refcnt(m_vm,lp.gettoken_str(1))>=0)
+          {
+            results.AppendFormatted(1024,"Warning: device name '%s' already in use, skipping @output line\r\n",lp.gettoken_str(1));
+          }
+          else
+          {
+            outputs_used++;
+
+            const char *dp=lp.gettoken_str(2);
+            if (!strnicmp(dp,"MIDI:",5))
+            {
+              dp += 5;
+              while (*dp == ' ') dp++;
+              results.AppendFormatted(1024,"Warning: todo: @output MIDI: support");
+            }
+            else
+            {
+              if (!strnicmp(dp,"OSC:",4)) 
+              {
+                dp+=4;
+                while (*dp == ' ') dp++;
+              }
+              bool is_reuse=false;
+              oscOutputDevice *r = NULL;
+              int x;
+              for (x=0;x<g_outputs.GetSize();x++)
+              {
+                outputDevice *d = g_outputs.Get(x);
+                if (d && !strcmp(d->get_type(),"OSC"))
+                {
+                  oscOutputDevice *p = (oscOutputDevice *)d;
+                  if (!strcmp(p->m_dest.Get(),dp))
+                  {
+                    is_reuse=true;
+                    r=p; // reuse!
+                    break;
+                  }
+                }
+              }
+
+              if (!r) 
+              {
+                is_reuse=false;
+                r = new oscOutputDevice(dp, lp.getnumtokens()>=4 ? lp.gettoken_int(3) : 0,
+                                                           lp.getnumtokens()>=5 ? lp.gettoken_int(4) : -1);
+                if (r->m_sendsock<0)
+                {
+                  results.AppendFormatted(1024,"Warning: failed creating destination for @output '%s' -> '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(2));
+                  delete r;
+                  r=NULL;
+                }
+              }
+
+              if (r)
+              {
+                EEL_F *var=NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+                if (var) *var=(is_reuse ? g_outputs.Find(r) : g_outputs.GetSize()) + OUTPUT_INDEX_BASE;
+                if (!is_reuse) g_outputs.Add(r);
+              }
+            }
+          }
+        }
+      }
+      else
+      {
+        results.AppendFormatted(1024,"Warning: Unknown directive: %s\r\n",tok);
+      }
+    }
+    else
+    {
+      const char *p=linebuf;
+      if (parsestate==-3)
+      {
+        while (*p)
+        {
+          if (p[0] == '*' && p[1]== '/')
+          {
+            parsestate=-1; // end of comment!
+            p+=2;
+            break;
+          }
+        }
+      }
+      if (parsestate==-1 && p[0])
+      {
+        while (*p == ' ' || *p =='\t') p++;
+        if (!*p || (p[0] == '/' && p[1] == '/'))
+        {
+        }
+        else
+        {
+          if (*p == '/' && p[1] == '*')
+          {
+            parsestate=-3;
+          }
+          else
+          {
+            results.AppendFormatted(1024,"Warning: line '%.100s' (and possibly more)' are not in valid section and may be ignored\r\n", linebuf);
+            parsestate=-2;
+          }
+        }
+      }
+      if (parsestate>=0)
+      {
+        curblock.Append(linebuf);
+        curblock.Append("\n");
+      }
+    }
+  }
+  compileCode(parsestate,curblock,results,cursec_lineoffs);
+
+
+  fclose(fp);
+
+  results.Append("Loaded: ");
+  results.Append(m_fn.Get());
+  results.Append("\r\n");
+
+  if (!inputs_used) results.Append("Warning: No @input opened\r\n");
+  if (!outputs_used) results.Append("Warning: No @output opened\r\n");
+  if (!g_formats.GetSize()) results.Append("Warning: No formats appear to be defined in code using { }\r\n");
+
+  results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",
+      inputs_used,outputs_used,g_formats.GetSize());
+
+}
+
+
+
+void NSEEL_HOSTSTUB_EnterMutex() { }
+void NSEEL_HOSTSTUB_LeaveMutex() { }
+
+
+
+void load_all_scripts(WDL_FastString &results)
+{
+  g_inputs.Empty(true);
+  g_outputs.Empty(true);
+
+  int x;
+  for (x=0;x<m_scripts.GetSize(); x++) m_scripts.Get(x)->reloadScript(results);
+
+  results.AppendFormatted(512,"\r\nTotal: %d inputs, %d outputs\r\n", g_inputs.GetSize(),g_outputs.GetSize());
+
+  for (x=0;x<g_inputs.GetSize();x++)
+  {
+    inputDevice *rec=g_inputs.Get(x);
+    if (rec) rec->start();
+  }
+}
+
+WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
+{
+  static WDL_FastString results;
+  switch (uMsg)
+  {
+    case WM_INITDIALOG:
+      // lParam = config file
+      {
+        HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
+        SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
+        systray_add(hwndDlg, 0, (HICON)icon, "Cockos midi2osc");
+
+        SendMessage(hwndDlg,WM_COMMAND,IDC_BUTTON1,0);
+        SetTimer(hwndDlg,1,10,NULL);
+      }
+    return 1;
+    case WM_CLOSE:
+      ShowWindow(hwndDlg,SW_HIDE);
+    return 1;
+    case WM_TIMER:
+      if (wParam == 1)
+      {
+        // periodically update IDC_LASTMSG with new message(s?), if changed
+        int x;
+        int asz=results.GetLength();
+        for (x=0;x<g_inputs.GetSize();x++) 
+        {
+          g_inputs.Get(x)->run(results);
+        }
+        if (results.GetLength() != asz)
+        {
+          SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
+        }
+
+        if (m_var_time) *m_var_time = timeGetTime()/1000.0;
+
+        bool needUIupdate=false;
+
+        if (g_incoming_events.Available())
+        {
+          static WDL_TypedBuf<incomingEvent> tmp;
+
+          g_incoming_events_mutex.Enter();
+          tmp.Resize(g_incoming_events.Available(),false);
+          if (tmp.GetSize()==g_incoming_events.Available())
+          {
+            memcpy(tmp.Get(),g_incoming_events.Get(),tmp.GetSize()*sizeof(incomingEvent));
+          }
+          else
+          {
+            tmp.Resize(0,false);
+          }
+          g_incoming_events.Clear();
+          g_incoming_events_mutex.Leave();
+
+          for (x=0;x<tmp.GetSize();x++)
+          {
+            incomingEvent *evt = tmp.Get()+x;
+
+            int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
+            if (g_recent_events[0] != asInt)
+            {
+              memmove(g_recent_events+1,g_recent_events,sizeof(g_recent_events)-sizeof(g_recent_events[0]));
+              g_recent_events[0]=asInt;
+              needUIupdate=true;
+            }
+
+
+            if (m_var_msgs[0]) m_var_msgs[0][0] = evt->msg[0];
+            if (m_var_msgs[1]) m_var_msgs[1][0] = evt->msg[1];
+            if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
+            if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
+            NSEEL_code_execute(m_code[2]);
+          }
+        }
+        if (m_vm && m_code[1]) NSEEL_code_execute(m_code[1]); // timer follows messages
+
+        for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run();  // send queued messages
+
+        if (needUIupdate)
+        {
+          static WDL_FastString s;
+          s.Set("");
+          int x;
+          for(x=0;x<sizeof(g_recent_events)/sizeof(g_recent_events[0]);x++)
+          {
+            int a = g_recent_events[x];
+            if (!a) break;
+            s.AppendFormatted(64,"%02x:%02x:%02x ",(a>>16)&0xff,(a>>8)&0xff,a&0xff);
+          }
+          SetDlgItemText(hwndDlg,IDC_LASTMSG,s.Get());
+        }
+      }
+    return 0;
+    case WM_COMMAND:
+      switch (LOWORD(wParam))
+      {
+        case IDCANCEL:
+          systray_del(hwndDlg,0);
+          EndDialog(hwndDlg,1);
+        break;
+        case IDC_BUTTON1:
+          {
+            results.Set("");
+            load_all_scripts(results);
+            SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
+          }
+        break;
+      }
+    return 0;
+    case WM_SYSTRAY:
+      switch (LOWORD(lParam))
+      {
+        case WM_LBUTTONDBLCLK:
+          ShowWindow(hwndDlg,SW_SHOW);
+          SetForegroundWindow(hwndDlg);
+        return 0;
+      }
+    return 0;
+  }
+  return 0;
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
@@ -1095,7 +1288,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   g_hInstance = hInstance;
   if (lpCmdLine && *lpCmdLine) 
   {
-    cfgfile.Set(lpCmdLine);
+    // todo: if multiple files specified load each
+    g_scripts.Add(new scriptInstance(lpCmdLine));
   }
   else
   {
@@ -1105,20 +1299,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     char *p=exepath;
     while (*p) p++;
     while (p >= exepath && *p != '\\') p--; *++p=0;
+    WDL_String cfgfile;
     cfgfile.Set(exepath);
     cfgfile.Append("midi2osc.cfg");
+    g_scripts.Add(new scriptInstance(cfgfile.Get()));
   }
 
   JNL::open_socketlib();
 
   NSEEL_init();
   NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm,(char *)_asm_generic3parm_end-(char *)_asm_generic3parm,NSEEL_PProc_THIS,(void *)&_send_oscevent);
-  // add oscsend() function
+  // todo: midisend(), oscmatch(), oscpop()
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
 
   g_inputs.Empty(true);
   g_outputs.Empty(true);
+  g_scripts.Empty(true);
+
 
   ExitProcess(0);
   return 0;
