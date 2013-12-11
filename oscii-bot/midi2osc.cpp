@@ -10,6 +10,7 @@
 #include "../WDL/wdlcstring.h"
 #include "../WDL/wdlstring.h"
 #include "../WDL/ptrlist.h"
+#include "../WDL/dirscan.h"
 #include "../WDL/queue.h"
 #include "../WDL/assocarray.h"
 #include "../WDL/mutex.h"
@@ -75,11 +76,9 @@ class scriptInstance
     scriptInstance(const char *fn) 
     { 
       m_fn.Set(fn);
-      m_var_time = 0;
-      memset(m_var_msgs,0,sizeof(m_var_msgs));
-      memset(m_var_oscfmt,0,sizeof(m_var_oscfmt));
       m_vm=0;
       memset(m_code,0,sizeof(m_code));
+      clear();
     }
     ~scriptInstance() 
     {
@@ -98,6 +97,10 @@ class scriptInstance
       if (m_vm) NSEEL_VM_free(m_vm);
       m_vm=0;
       m_incoming_events.Clear();
+
+      m_var_time = 0;
+      memset(m_var_msgs,0,sizeof(m_var_msgs));
+      memset(m_var_oscfmt,0,sizeof(m_var_oscfmt));
     }
 
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
@@ -1196,7 +1199,7 @@ void load_all_scripts(WDL_FastString &results)
   int x;
   for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->reloadScript(results);
 
-  results.AppendFormatted(512,"\r\nTotal: %d inputs, %d outputs\r\n", g_inputs.GetSize(),g_outputs.GetSize());
+  results.AppendFormatted(512,"\r\nTotal: %d scripts, %d inputs, %d outputs\r\n", g_scripts.GetSize(), g_inputs.GetSize(),g_outputs.GetSize());
 
   for (x=0;x<g_inputs.GetSize();x++)
   {
@@ -1293,27 +1296,116 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
   return 0;
 }
 
+void load_scripts_for_path(const char *path)
+{
+  WDL_DirScan ds;
+  WDL_String s;
+  if (!ds.First(path))
+  {
+    do
+    {
+      const char *fn = ds.GetCurrentFN();
+      if (fn[0] != '.' && strlen(fn)>4 && !stricmp(fn+strlen(fn)-4,".cfg"))
+      {
+        ds.GetCurrentFullFN(&s);
+        g_scripts.Add(new scriptInstance(s.Get()));
+      }
+    }
+    while (!ds.Next());
+  }
+
+}
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
   g_hInstance = hInstance;
-  if (lpCmdLine && *lpCmdLine) 
+
+  char exepath[2048];
+  exepath[0]=0;
+  GetModuleFileName(NULL,exepath,sizeof(exepath));
+  char *p=exepath;
+  while (*p) p++;
+  while (p >= exepath && *p != '\\') p--; *++p=0;
+
   {
-    // todo: if multiple files specified load each
-    g_scripts.Add(new scriptInstance(lpCmdLine));
+    int state=0;
+    char *p=lpCmdLine;
+    while (*p)
+    {
+      char parm[2048];
+      int parm_pos=0,qs=0;
+
+      while (isspace(*p)) p++;
+      if (!*p) break;
+
+      while (*p && (!isspace(*p) || qs))
+      {
+        if (*p == '\"') qs=!qs;
+        else if (parm_pos < (int)sizeof(parm)-1) parm[parm_pos++]=*p;       
+        p++;
+      }
+      parm[parm_pos]=0;
+
+      if (!state) if (parm[0] == '/') parm[0]='-';
+
+      switch (state)
+      {
+        case 0:
+          if (parm[0] == '-')
+          {
+            if (!strcmp(parm,"-dir"))
+            {
+              state=1;
+            }
+            else
+            {
+              state=-1;
+            }
+          }
+          else
+          {
+            if (strstr(parm,"/") || strstr(parm,"\\"))
+            {
+              g_scripts.Add(new scriptInstance(parm));
+            }
+            else
+            {
+              WDL_FastString s(exepath);
+              s.Append(parm);
+              g_scripts.Add(new scriptInstance(s.Get()));
+            }
+          }
+        break;
+        case 1:
+          if (strstr(parm,"/") || strstr(parm,"\\"))
+          {
+            load_scripts_for_path(parm);
+          }
+          else
+          {
+            WDL_FastString s(exepath);
+            s.Append(parm);
+            load_scripts_for_path(s.Get());
+          }
+          state=0;
+          // dir
+        break;
+
+      }
+
+      if (state < 0) break;
+    }
+    if (state)
+    {
+      MessageBox(NULL,
+        "Usage:\r\n"
+        "midi2osc [filename.cfg ...] [-dir pathwithcfgfiles]\r\n"
+        "if no config files specified, default will be all cfg files in program directory","Usage",MB_OK);
+      return 0;
+    }
   }
-  else
-  {
-    char exepath[2048];
-    exepath[0]=0;
-    GetModuleFileName(NULL,exepath,sizeof(exepath));
-    char *p=exepath;
-    while (*p) p++;
-    while (p >= exepath && *p != '\\') p--; *++p=0;
-    WDL_String cfgfile;
-    cfgfile.Set(exepath);
-    cfgfile.Append("midi2osc.cfg");
-    g_scripts.Add(new scriptInstance(cfgfile.Get()));
-  }
+
+  if (!g_scripts.GetSize()) load_scripts_for_path(exepath);
+
 
   JNL::open_socketlib();
 
