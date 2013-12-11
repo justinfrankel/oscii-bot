@@ -17,117 +17,27 @@ static void OSC_BSWAPINTMEM(void *buf)
 #endif
 
 
+// thanks, REAPER
+
 class OscMessageWrite
 {
 public:
 
-  OscMessageWrite()
-  {
-    m_msg[0]=0;
-    m_types[0]=0;
-    m_args[0]=0;
+  OscMessageWrite();
 
-    m_msg_ptr=m_msg;
-    m_type_ptr=m_types;
-    m_arg_ptr=m_args;
-  }
+  bool PushWord(const char* word);
+  bool PushInt(int val); // push an int onto the message (not an int arg)
 
-  bool PushWord(const char* word)
-  {
-    int len=strlen(word);
-    if (m_msg_ptr+len+1 >= m_msg+sizeof(m_msg)) return false;
+  bool PushIntArg(int val);
+  bool PushFloatArg(float val);
+  bool PushStringArg(const char* val);
 
-    strcpy(m_msg_ptr, word);
-    m_msg_ptr += len;
-    return true;
-  }
-
-  bool PushIntArg(int val)
-  {
-    if (m_type_ptr+1 > m_types+sizeof(m_types)) return false;
-    if (m_arg_ptr+sizeof(int) > m_args+sizeof(m_args)) return false;
-
-    *m_type_ptr++='i'; 
-    *m_type_ptr=0;
-
-    *(int*)m_arg_ptr=val;
-    OSC_MAKEINTMEM4BE(m_arg_ptr);
-    m_arg_ptr += sizeof(int);
+  const char* GetBuffer(int* len);
   
-    return true;
-  }
+  void DebugDump(const char* label, char* dump, int dumplen);
 
-  bool PushFloatArg(float val)
-  {
-    if (m_type_ptr+1 > m_types+sizeof(m_types)) return false;
-    if (m_arg_ptr+sizeof(float) > m_args+sizeof(m_args)) return false;
-
-    *m_type_ptr++='f';
-    *m_type_ptr=0;
-
-    *(float*)m_arg_ptr=val;
-    OSC_MAKEINTMEM4BE(m_arg_ptr);
-    m_arg_ptr += sizeof(float);
-  
-    return true;
-  }
-
-  bool PushStringArg(const char* val)
-  {
-    int len=strlen(val);
-    int padlen=pad4(len);
-
-    if (m_type_ptr+1 > m_types+sizeof(m_types)) return false;
-    if (m_arg_ptr+padlen > m_args+sizeof(m_args)) return false;
-
-    *m_type_ptr++='s';
-    *m_type_ptr=0;
-
-    strcpy(m_arg_ptr, val);
-    memset(m_arg_ptr+len, 0, padlen-len);
-    m_arg_ptr += padlen;
-
-    return true;
-  }
-  const char* GetBuffer(int* len)
-  {
-    int msglen=m_msg_ptr-m_msg;
-    int msgpadlen=pad4(msglen);
-
-    int typelen=m_type_ptr-m_types+1; // add the comma
-    int typepadlen=pad4(typelen);
-
-    int arglen=m_arg_ptr-m_args; // already padded
-
-    if (msgpadlen+typepadlen+arglen > sizeof(m_msg)) 
-    {
-      if (len) *len=0;
-      return "";
-    }
-
-    char* p=m_msg;
-    memset(p+msglen, 0, msgpadlen-msglen);
-    p += msgpadlen;
-  
-    *p=',';
-    strcpy(p+1, m_types);
-    memset(p+typelen, 0, typepadlen-typelen);
-    p += typepadlen;
-
-    memcpy(p, m_args, arglen);
-    p += arglen;
-
-    if (len) *len=p-m_msg;
-    return m_msg;
-  }
-  
 private:
   
-  static int pad4(int len)
-  {
-    return (len+4)&~3;
-  }
-
   char m_msg[MAX_OSC_MSG_LEN];
   char m_types[MAX_OSC_MSG_LEN];
   char m_args[MAX_OSC_MSG_LEN];
@@ -136,5 +46,37 @@ private:
   char* m_type_ptr;
   char* m_arg_ptr;
 };
+
+
+class OscMessageRead
+{
+public:
+
+  OscMessageRead(char* buf, int len); // writes over buf
+
+  const char* GetMessage(); // get the entire message string, no args
+  int GetNumArgs();
+
+  const char* PopWord();
+
+  const int* PopIntArg(bool peek);
+  const float* PopFloatArg(bool peek);
+  const char* PopStringArg(bool peek);
+
+  void DebugDump(const char* label, char* dump, int dumplen);
+
+private:
+
+  char* m_msg_end;
+  char* m_type_end;
+  char* m_arg_end;
+
+  char* m_msg_ptr;
+  char* m_type_ptr;
+  char* m_arg_ptr;
+
+  bool m_msgok;
+};
+
 
 #endif

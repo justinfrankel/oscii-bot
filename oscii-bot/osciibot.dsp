@@ -144,6 +144,10 @@ SOURCE=.\midi_win32.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=.\oscmsg.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=.\oscmsg.h
 # End Source File
 # Begin Source File
