@@ -132,7 +132,19 @@ SOURCE=..\WDL\jnetlib\util.cpp
 # End Group
 # Begin Source File
 
+SOURCE=.\device.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\midi2osc.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\midi_win32.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=.\oscmsg.h
 # End Source File
 # Begin Source File
 

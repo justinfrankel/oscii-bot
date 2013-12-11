@@ -8,13 +8,13 @@
 #include "resource.h"
 #include "../WDL/eel2/ns-eel-int.h"
 #include "../WDL/wdlcstring.h"
-#include "../WDL/wdlstring.h"
-#include "../WDL/ptrlist.h"
 #include "../WDL/dirscan.h"
 #include "../WDL/queue.h"
-#include "../WDL/assocarray.h"
 #include "../WDL/mutex.h"
 #include "../WDL/lineparse.h"
+
+#include "device.h"
+#include "oscmsg.h"
 
 #if defined(_MSC_VER) && defined(strcasecmp)
 #undef strcasecmp
@@ -24,47 +24,10 @@
 
 HINSTANCE g_hInstance;
 
-static void BSWAPINTMEM(void *buf)
-{
-  char *p=(char *)buf;
-  char tmp=p[0]; p[0]=p[3]; p[3]=tmp;
-  tmp=p[1]; p[1]=p[2]; p[2]=tmp;
-}
-
-#ifdef __ppc__
-#define MAKEINTMEM4BE(x)
-#else
-#define MAKEINTMEM4BE(x) BSWAPINTMEM(x)
-#endif
-
-#define MAX_OSC_MSG_LEN 1024
-
-
 #define WM_SYSTRAY              WM_USER + 0x200
 BOOL systray_add(HWND hwnd, UINT uID, HICON hIcon, LPSTR lpszTip);
 BOOL systray_del(HWND hwnd, UINT uID);
 
-class outputDevice {
-  protected:
-    outputDevice() { }
-  public:
-    virtual ~outputDevice() { }
-    virtual void run()=0;
-    virtual void oscSend(const char *src, int len) { }
-    virtual const char *get_type()=0;
-};
-
-class inputDevice {
-  protected:
-    inputDevice() { }
-  public:
-    virtual ~inputDevice() { };
-    virtual void start()=0;
-    virtual void run(WDL_FastString &textOut)=0;
-    virtual const char *get_type()=0;
-
-    WDL_PtrKeyedArray<EEL_F *> m_instances;
-};
 
 int g_recent_events[4];
 const char *g_code_names[4] = { "@init", "@timer", "@msg", "@oscmsg" };
@@ -105,6 +68,7 @@ class scriptInstance
 
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
     bool run(double curtime, WDL_FastString &results);
+    static void messageCallback(void *d1, void *d2, int type, void *msg);
 
     WDL_String m_fn;
 
@@ -147,125 +111,6 @@ WDL_PtrList<inputDevice> g_inputs;
 WDL_PtrList<outputDevice> g_outputs;
 
 
-class OscMessageWrite
-{
-public:
-
-  OscMessageWrite()
-  {
-    m_msg[0]=0;
-    m_types[0]=0;
-    m_args[0]=0;
-
-    m_msg_ptr=m_msg;
-    m_type_ptr=m_types;
-    m_arg_ptr=m_args;
-  }
-
-  bool PushWord(const char* word)
-  {
-    int len=strlen(word);
-    if (m_msg_ptr+len+1 >= m_msg+sizeof(m_msg)) return false;
-
-    strcpy(m_msg_ptr, word);
-    m_msg_ptr += len;
-    return true;
-  }
-
-  bool PushIntArg(int val)
-  {
-    if (m_type_ptr+1 > m_types+sizeof(m_types)) return false;
-    if (m_arg_ptr+sizeof(int) > m_args+sizeof(m_args)) return false;
-
-    *m_type_ptr++='i'; 
-    *m_type_ptr=0;
-
-    *(int*)m_arg_ptr=val;
-    MAKEINTMEM4BE(m_arg_ptr);
-    m_arg_ptr += sizeof(int);
-  
-    return true;
-  }
-
-  bool PushFloatArg(float val)
-  {
-    if (m_type_ptr+1 > m_types+sizeof(m_types)) return false;
-    if (m_arg_ptr+sizeof(float) > m_args+sizeof(m_args)) return false;
-
-    *m_type_ptr++='f';
-    *m_type_ptr=0;
-
-    *(float*)m_arg_ptr=val;
-    MAKEINTMEM4BE(m_arg_ptr);
-    m_arg_ptr += sizeof(float);
-  
-    return true;
-  }
-
-  bool PushStringArg(const char* val)
-  {
-    int len=strlen(val);
-    int padlen=pad4(len);
-
-    if (m_type_ptr+1 > m_types+sizeof(m_types)) return false;
-    if (m_arg_ptr+padlen > m_args+sizeof(m_args)) return false;
-
-    *m_type_ptr++='s';
-    *m_type_ptr=0;
-
-    strcpy(m_arg_ptr, val);
-    memset(m_arg_ptr+len, 0, padlen-len);
-    m_arg_ptr += padlen;
-
-    return true;
-  }
-  const char* GetBuffer(int* len)
-  {
-    int msglen=m_msg_ptr-m_msg;
-    int msgpadlen=pad4(msglen);
-
-    int typelen=m_type_ptr-m_types+1; // add the comma
-    int typepadlen=pad4(typelen);
-
-    int arglen=m_arg_ptr-m_args; // already padded
-
-    if (msgpadlen+typepadlen+arglen > sizeof(m_msg)) 
-    {
-      if (len) *len=0;
-      return "";
-    }
-
-    char* p=m_msg;
-    memset(p+msglen, 0, msgpadlen-msglen);
-    p += msgpadlen;
-  
-    *p=',';
-    strcpy(p+1, m_types);
-    memset(p+typelen, 0, typepadlen-typelen);
-    p += typepadlen;
-
-    memcpy(p, m_args, arglen);
-    p += arglen;
-
-    if (len) *len=p-m_msg;
-    return m_msg;
-  }
-  
-private:
-  
-  static int pad4(int len)
-  {
-    return (len+4)&~3;
-  }
-
-  char m_msg[MAX_OSC_MSG_LEN];
-  char m_types[MAX_OSC_MSG_LEN];
-  char m_args[MAX_OSC_MSG_LEN];
-
-  char* m_msg_ptr;
-  char* m_type_ptr;
-  char* m_arg_ptr;
-};
 
 class oscOutputDevice : public outputDevice
 {
@@ -332,7 +177,7 @@ public:
     while (m_sendq.Available() >= sizeof(int))
     {
       int len=*(int*)m_sendq.Get(); // not advancing
-      MAKEINTMEM4BE((char*)&len);
+      OSC_MAKEINTMEM4BE((char*)&len);
 
       if (len < 1 || len > MAX_OSC_MSG_LEN || len > m_sendq.Available()) break;             
         
@@ -385,7 +230,7 @@ public:
     if (!m_sendq.GetSize()) m_sendq.Add(NULL,16);
 
     int tlen=len;
-    MAKEINTMEM4BE(&tlen);
+    OSC_MAKEINTMEM4BE(&tlen);
     m_sendq.Add(&tlen,sizeof(tlen));
     m_sendq.Add(src,len);
   }
@@ -399,229 +244,6 @@ public:
   WDL_String m_dest;
 };
 
-
-class midiInputDevice : public inputDevice
-{
-public:
-  midiInputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<inputDevice> *reuseDevList) 
-  {
-    // found device!
-    m_name_substr = strdup(namesubstr);
-    m_input_skipcnt=skipcnt;
-    m_handle=0;
-    m_name_used=0;
-    m_open_would_use_altdev = NULL;
-    m_last_dev_idx=-1;
-    
-    do_open(reuseDevList);
-  }
-
-  virtual ~midiInputDevice() 
-  { 
-    do_close();
-    free(m_name_substr);
-    free(m_name_used);
-  }
-
-  virtual const char *get_type() { return "MIDI"; }
-
-  void do_open(WDL_PtrList<inputDevice> *reuseDevList=NULL)
-  {
-    do_close();
-    m_lastmsgtime = GetTickCount();
-
-    int x;
-    const int n=midiInGetNumDevs();
-    int skipcnt = m_input_skipcnt;
-    for(x=0;x<n;x++)
-    {
-      MIDIINCAPS caps;
-      if (midiInGetDevCaps(x,&caps,sizeof(caps)) == MMSYSERR_NOERROR)
-      {
-        if ((!m_name_substr[0] || strstr(caps.szPname,m_name_substr)) && !skipcnt--)
-        {
-          free(m_name_used);
-          m_name_used = strdup(caps.szPname);
-
-          if (reuseDevList)
-          {
-            int x;
-            for (x=0;x<reuseDevList->GetSize();x++)
-            {
-              inputDevice *dev=reuseDevList->Get(x);
-              if (dev && !strcmp(dev->get_type(),"MIDI"))
-              {
-                midiInputDevice *mid = (midiInputDevice *)dev;
-                if (mid->m_last_dev_idx == x)
-                {
-                  m_open_would_use_altdev = mid;
-                  return;
-                }
-              }
-            }
-          }
-
-          m_last_dev_idx = x;
-          if (midiInOpen(&m_handle,x,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
-          {
-            m_handle=0;
-          }
-          else
-          {
-            int x;
-            for (x = 0; x < 8; x ++)
-            {
-              const int bufsz=1024;
-              MIDIHDR *hdr=(MIDIHDR *)malloc(sizeof(MIDIHDR)+bufsz);
-              memset(hdr,0,sizeof(MIDIHDR));
-              hdr->dwBufferLength = bufsz;
-              hdr->lpData = (char *)(hdr+1);
-              m_longmsgs.Add(hdr);
-            }
-          }
-          break;
-        }
-      }
-    }
-  }
-  void do_close()
-  {
-    if (m_handle) 
-    {
-      midiInReset(m_handle);
-      int x;
-      int n=500;
-      Sleep(100);
-      for (x = 0; x < m_longmsgs.GetSize(); x ++)
-      {
-        MIDIHDR *hdr=m_longmsgs.Get(x);
-        while (!(hdr->dwFlags & MHDR_DONE) && (hdr->dwFlags & MHDR_INQUEUE) && n-->0)
-          Sleep(10);
-      }
-      for (x = 0; x < m_longmsgs.GetSize(); x ++)
-      {
-        MIDIHDR *hdr=m_longmsgs.Get(x);
-        midiInUnprepareHeader(m_handle,hdr,sizeof(MIDIHDR));
-      }
-      m_longmsgs.Empty(true,free);
-
-      midiInClose(m_handle); 
-      m_handle=0;
-    }
-  }
-
-  virtual void start() 
-  { 
-    if (m_handle) 
-    {
-      midiInStop(m_handle);
-      int x;
-      for (x = 0; x < m_longmsgs.GetSize(); x ++)
-      {
-        if (!(m_longmsgs.Get(x)->dwFlags & MHDR_INQUEUE) || (m_longmsgs.Get(x)->dwFlags & MHDR_DONE))
-        {
-          midiInUnprepareHeader(m_handle,m_longmsgs.Get(x),sizeof(MIDIHDR));
-          m_longmsgs.Get(x)->dwFlags=0;
-          m_longmsgs.Get(x)->dwBytesRecorded=0;
-          midiInPrepareHeader(m_handle,m_longmsgs.Get(x),sizeof(MIDIHDR));
-          midiInAddBuffer(m_handle,m_longmsgs.Get(x),sizeof(MIDIHDR));
-        }
-      }
-
-      midiInStart(m_handle); 
-    }
-  }
-  virtual void run(WDL_FastString &textOut)
-  {
-    int x;
-
-    if (m_handle) for (x = 0; x < m_longmsgs.GetSize(); x ++)
-    {
-      MIDIHDR *hdr=m_longmsgs.Get(x);
-      if (hdr->dwFlags & MHDR_DONE)
-      {
-        midiInUnprepareHeader(m_handle,m_longmsgs.Get(x),sizeof(MIDIHDR));
-        m_longmsgs.Get(x)->dwFlags=0;
-        m_longmsgs.Get(x)->dwBytesRecorded=0;
-      }
-      if (!(hdr->dwFlags & MHDR_PREPARED))
-      {
-        midiInPrepareHeader(m_handle,m_longmsgs.Get(x),sizeof(MIDIHDR));
-      }
-      if (!(hdr->dwFlags & MHDR_INQUEUE))
-      {
-        midiInAddBuffer(m_handle,m_longmsgs.Get(x),sizeof(MIDIHDR));
-      }
-    }
-
-    const DWORD now=GetTickCount();
-    if (now > m_lastmsgtime+5000) // every 5s of inactivity, query status
-    {
-      m_lastmsgtime = GetTickCount();
-      MIDIINCAPS caps;
-      if (!m_handle || midiInGetDevCaps((UINT)m_handle,&caps,sizeof(caps))!=MMSYSERR_NOERROR)
-      {
-        const bool had_handle=!!m_handle;
-        do_close();
-        do_open();
-        if (m_handle) 
-        {
-          textOut.AppendFormatted(1024,"Reopened device %s\r\n",m_name_used);
-          start();
-        }
-        else if (had_handle) textOut.AppendFormatted(1024,"Closed device %s\r\n",m_name_used);
-      }
-    }
-  }
-
-  static void CALLBACK callbackFunc(
-    HMIDIIN hMidiIn,  
-    UINT wMsg,        
-    LPARAM dwInstance, 
-    LPARAM dwParam1,   
-    LPARAM dwParam2    
-  )
-  {
-    midiInputDevice *_this = (midiInputDevice*)dwInstance;
-    if (wMsg == MIM_DATA )
-    {
-      if (_this) 
-      {
-        scriptInstance::incomingEvent item;
-        item.msg[0]=(unsigned char)(dwParam1&0xff);
-        item.msg[1]=(unsigned char)((dwParam1>>8)&0xff);
-        item.msg[2]=(unsigned char)((dwParam1>>16)&0xff);
-
-        _this->m_lastmsgtime = GetTickCount();
-
-        int x;
-        const int n=_this->m_instances.GetSize();
-        for (x=0;x<n; x++)
-        {
-          scriptInstance *script = NULL;
-          item.dev_ptr = _this->m_instances.Enumerate(x,(INT_PTR *)&script);
-
-          if (script && script->m_incoming_events.Available() < 2048)
-          {
-            script->m_incoming_events_mutex.Enter();
-            script->m_incoming_events.Add(&item,1);
-            script->m_incoming_events_mutex.Leave();
-          }
-        }
-      }
-    }
-  }
-
-  HMIDIIN m_handle;
-  WDL_PtrList<MIDIHDR> m_longmsgs;
-  char *m_name_substr,*m_name_used;
-  int m_input_skipcnt;
-  DWORD m_lastmsgtime;
-
-  midiInputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in reuseDevList
-  int m_last_dev_idx;
-
-};
 
 
 void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs)
@@ -995,7 +617,7 @@ void scriptInstance::reloadScript(WDL_FastString &results)
               EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
               if (dev_idx) 
                 dev_idx[0] = (is_reuse ? g_inputs.Find(rec) : g_inputs.GetSize()) + INPUT_INDEX_BASE;
-              rec->m_instances.Insert((INT_PTR)this,dev_idx);
+              rec->addinst(messageCallback,this,dev_idx);
               if (!is_reuse) g_inputs.Add(rec);
             }
           }
@@ -1134,6 +756,25 @@ void scriptInstance::reloadScript(WDL_FastString &results)
   results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",
       inputs_used,outputs_used,m_formats.GetSize());
 
+}
+
+void scriptInstance::messageCallback(void *d1, void *d2, int type, void *msg)
+{
+  scriptInstance *_this  = (scriptInstance *)d1;
+  if (type == 0 && _this && msg)
+  {
+    // MIDI
+    if (_this->m_incoming_events.Available() < 2048)
+    {
+      scriptInstance::incomingEvent item;
+      item.dev_ptr = (EEL_F*)d2;
+      memcpy(item.msg,msg,3);
+
+      _this->m_incoming_events_mutex.Enter();
+      _this->m_incoming_events.Add(&item,1);
+      _this->m_incoming_events_mutex.Leave();
+    }
+  }
 }
 
 bool scriptInstance::run(double curtime, WDL_FastString &results)
