@@ -50,6 +50,8 @@ class scriptInstance
     void reloadScript(WDL_FastString &results);
     void clear()
     {
+      m_in_devs.Empty();
+      m_out_devs.Empty();
       m_formats.Empty(true);
       int x;
       for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
@@ -66,6 +68,7 @@ class scriptInstance
       memset(m_var_oscfmt,0,sizeof(m_var_oscfmt));
     }
 
+
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
     bool run(double curtime, WDL_FastString &results);
     static void messageCallback(void *d1, void *d2, int type, void *msg);
@@ -78,6 +81,10 @@ class scriptInstance
       unsigned char msg[3];
     };
 
+
+    // these are non-owned refs
+    WDL_PtrList<inputDevice> m_in_devs;
+    WDL_PtrList<outputDevice> m_out_devs;
 
     WDL_TypedQueue<incomingEvent> m_incoming_events; 
     WDL_Mutex m_incoming_events_mutex;
@@ -107,7 +114,7 @@ class scriptInstance
 
 
 WDL_PtrList<scriptInstance> g_scripts;
-WDL_PtrList<inputDevice> g_inputs;
+WDL_PtrList<inputDevice> g_inputs; // these are owned here, scriptInstances reference them
 WDL_PtrList<outputDevice> g_outputs;
 
 
@@ -421,67 +428,76 @@ static int validate_format(const char *fmt)
 EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
-  int output_idx = (int) floor(*dest_device+0.5);
-  outputDevice *output = g_outputs.Get(output_idx - OUTPUT_INDEX_BASE);
-  if (_this && (output || output_idx == -1))
+  if (_this)
   {
-    formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
-    if (rec && rec->values.GetSize())
+    int output_idx = (int) floor(*dest_device+0.5);
+    outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
+    if (output || output_idx == -1 || output_idx==-100)
     {
-      const char *fmt = rec->values.Get(0)->Get();
-      char fmt_type = 0;
-      if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
-
-      int fmtcnt=validate_format(fmt);
-      if (fmtcnt >= 0 && fmtcnt < 10)
+      formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
+      if (rec && rec->values.GetSize())
       {
-        char buf[1024];
-#define FOO(x) (_this->m_var_oscfmt[x] ? _this->m_var_oscfmt[x][0]:0.0)
-        WDL_snprintf(buf,sizeof(buf),fmt, FOO(0),FOO(1),FOO(2),FOO(3),FOO(4),FOO(5),FOO(6),FOO(7),FOO(8),FOO(9));
-#undef FOO
+        const char *fmt = rec->values.Get(0)->Get();
+        char fmt_type = 0;
+        if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
-        OscMessageWrite wr;
-        wr.PushWord(buf);
+        int fmtcnt=validate_format(fmt);
+        if (fmtcnt >= 0 && fmtcnt < 10)
+        {
+          char buf[1024];
+  #define FOO(x) (_this->m_var_oscfmt[x] ? _this->m_var_oscfmt[x][0]:0.0)
+          WDL_snprintf(buf,sizeof(buf),fmt, FOO(0),FOO(1),FOO(2),FOO(3),FOO(4),FOO(5),FOO(6),FOO(7),FOO(8),FOO(9));
+  #undef FOO
+
+          OscMessageWrite wr;
+          wr.PushWord(buf);
         
-        if (fmt_type == 'b') wr.PushIntArg(!!(int) (*value));
-        else if (fmt_type =='i') wr.PushIntArg((int) (*value));
-        else if (fmt_type == 's')
-        {
-          int idx=(int) (*value);
-          if (idx>=0 && idx < rec->values.GetSize()-1)
+          if (fmt_type == 'b') wr.PushIntArg(!!(int) (*value));
+          else if (fmt_type =='i') wr.PushIntArg((int) (*value));
+          else if (fmt_type == 's')
           {
-            wr.PushStringArg(rec->values.Get(idx+1)->Get());
+            int idx=(int) (*value);
+            if (idx>=0 && idx < rec->values.GetSize()-1)
+            {
+              wr.PushStringArg(rec->values.Get(idx+1)->Get());
+            }
+            else
+            {
+              char tmp[64];
+              sprintf(tmp,"%.2f",*value);
+              wr.PushStringArg(tmp);
+            }         
           }
-          else
+          else if (fmt_type == 't')
           {
-            char tmp[64];
-            sprintf(tmp,"%.2f",*value);
-            wr.PushStringArg(tmp);
-          }         
-        }
-        else if (fmt_type == 't')
-        {
-          // no parameter, just toggle
-        }
-        else 
-        {
-          // default to float
-          wr.PushFloatArg((float)*value);
-        }
+            // no parameter, just toggle
+          }
+          else 
+          {
+            // default to float
+            wr.PushFloatArg((float)*value);
+          }
 
-        int l=0;
-        const char *ret=wr.GetBuffer(&l);
-        if (ret && l>0) 
-        {
-          if (output)
+          int l=0;
+          const char *ret=wr.GetBuffer(&l);
+          if (ret && l>0) 
           {
-            output->oscSend(ret,l);
-          }
-          else
-          {
-            int n;
-            for (n=0;n<g_outputs.GetSize();n++)
-              g_outputs.Get(n)->oscSend(ret,l);
+            if (output)
+            {
+              output->oscSend(ret,l);
+            }
+            else if (output_idx==-100)
+            {
+              int n;
+              for (n=0;n<g_outputs.GetSize();n++)
+                g_outputs.Get(n)->oscSend(ret,l);
+            }
+            else 
+            {
+              int n;
+              for (n=0;n<_this->m_out_devs.GetSize();n++)
+                _this->m_out_devs.Get(n)->oscSend(ret,l);
+            }
           }
         }
       }
@@ -528,7 +544,6 @@ void scriptInstance::reloadScript(WDL_FastString &results)
   bool comment_state=false;
   int parsestate=-1,cursec_lineoffs=0,lineoffs=0;
   WDL_FastString curblock;
-  int inputs_used=0, outputs_used=0;
   for (;;)
   {
     char linebuf[8192];
@@ -573,8 +588,6 @@ void scriptInstance::reloadScript(WDL_FastString &results)
           }
           else
           {
-            inputs_used++;
-
             const char *dp = lp.gettoken_str(2);
             if (!strnicmp(dp,"OSC:",4))
             {
@@ -615,9 +628,10 @@ void scriptInstance::reloadScript(WDL_FastString &results)
                   results.AppendFormatted(1024,"Warning: tried to open device matching '%s'(%d) but failed, will retry\r\n",substr,skipcnt);
               }
               EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-              if (dev_idx) 
-                dev_idx[0] = (is_reuse ? g_inputs.Find(rec) : g_inputs.GetSize()) + INPUT_INDEX_BASE;
+              if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
               rec->addinst(messageCallback,this,dev_idx);
+              m_in_devs.Add(rec);
+
               if (!is_reuse) g_inputs.Add(rec);
             }
           }
@@ -637,8 +651,6 @@ void scriptInstance::reloadScript(WDL_FastString &results)
           }
           else
           {
-            outputs_used++;
-
             const char *dp=lp.gettoken_str(2);
             if (!strnicmp(dp,"MIDI:",5))
             {
@@ -687,7 +699,9 @@ void scriptInstance::reloadScript(WDL_FastString &results)
               if (r)
               {
                 EEL_F *var=NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-                if (var) *var=(is_reuse ? g_outputs.Find(r) : g_outputs.GetSize()) + OUTPUT_INDEX_BASE;
+                if (var) *var=m_out_devs.GetSize() + OUTPUT_INDEX_BASE;
+                m_out_devs.Add(r);
+
                 if (!is_reuse) g_outputs.Add(r);
               }
             }
@@ -749,12 +763,12 @@ void scriptInstance::reloadScript(WDL_FastString &results)
   results.Append(m_fn.Get());
   results.Append("\r\n");
 
-  if (!inputs_used) results.Append("Warning: No @input opened\r\n");
-  if (!outputs_used) results.Append("Warning: No @output opened\r\n");
+  if (!m_in_devs.GetSize()) results.Append("Warning: No @input opened\r\n");
+  if (!m_out_devs.GetSize()) results.Append("Warning: No @output opened\r\n");
   if (!m_formats.GetSize()) results.Append("Warning: No formats appear to be defined in code using { }\r\n");
 
   results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",
-      inputs_used,outputs_used,m_formats.GetSize());
+      m_in_devs.GetSize(),m_out_devs.GetSize(),m_formats.GetSize());
 
 }
 
