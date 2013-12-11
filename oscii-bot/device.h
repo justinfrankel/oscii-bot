@@ -12,6 +12,7 @@ class outputDevice {
     virtual ~outputDevice() { }
     virtual void run()=0;
     virtual void oscSend(const char *src, int len) { }
+    virtual void midiSend(const unsigned char *buf, int len) { }
     virtual const char *get_type()=0;
 };
 
@@ -41,6 +42,40 @@ class inputDevice {
 
 
 
+class midiOutputDevice : public outputDevice
+{
+public:
+  midiOutputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<outputDevice> *reuseDevList);
+
+  virtual ~midiOutputDevice();
+
+  virtual void run();
+  virtual void midiSend(const unsigned char *buf, int len);
+  virtual const char *get_type() { return "MIDI"; }
+
+  char *m_name_substr,*m_name_used;
+  int m_skipcnt;
+  DWORD m_failed_time;
+
+  midiOutputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in reuseDevList
+  int m_last_dev_idx;
+
+#ifdef _WIN32
+  HMIDIOUT m_handle;
+  static void CALLBACK callbackFunc(
+    HMIDIOUT hMidiIn,  
+    UINT wMsg,        
+    LPARAM dwInstance, 
+    LPARAM dwParam1,   
+    LPARAM dwParam2    
+    ) { }
+
+#endif
+
+  void do_open(WDL_PtrList<outputDevice> *reuseDevList=NULL);
+  void do_close();
+
+};
 
 
 class midiInputDevice : public inputDevice

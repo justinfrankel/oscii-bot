@@ -205,3 +205,110 @@ void CALLBACK midiInputDevice::callbackFunc(
     }
   }
 }
+
+
+
+
+
+midiOutputDevice::midiOutputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<outputDevice> *reuseDevList) 
+{
+  // found device!
+  m_name_substr = strdup(namesubstr);
+  m_skipcnt=skipcnt;
+  m_handle=0;
+  m_name_used=0;
+  m_open_would_use_altdev = NULL;
+  m_last_dev_idx=-1;
+  
+  do_open(reuseDevList);
+}
+
+midiOutputDevice::~midiOutputDevice() 
+{
+  do_close();
+  free(m_name_substr);
+  free(m_name_used);
+}
+
+void midiOutputDevice::do_open(WDL_PtrList<outputDevice> *reuseDevList)
+{
+  do_close();
+  m_failed_time=0;
+
+  int x;
+  const int n=midiOutGetNumDevs();
+  int skipcnt = m_skipcnt;
+  for(x=0;x<n;x++)
+  {
+    MIDIOUTCAPS caps;
+    if (midiOutGetDevCaps(x,&caps,sizeof(caps)) == MMSYSERR_NOERROR)
+    {
+      if ((!m_name_substr[0] || strstr(caps.szPname,m_name_substr)) && !skipcnt--)
+      {
+        free(m_name_used);
+        m_name_used = strdup(caps.szPname);
+
+        if (reuseDevList)
+        {
+          int x;
+          for (x=0;x<reuseDevList->GetSize();x++)
+          {
+            outputDevice *dev=reuseDevList->Get(x);
+            if (dev && !strcmp(dev->get_type(),"MIDI"))
+            {
+              midiOutputDevice *mid = (midiOutputDevice *)dev;
+              if (mid->m_last_dev_idx == x)
+              {
+                m_open_would_use_altdev = mid;
+                return;
+              }
+            }
+          }
+        }
+
+        m_last_dev_idx = x;
+        if (midiOutOpen(&m_handle,x,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
+        {
+          m_handle=0;
+          m_failed_time=GetTickCount();
+        }
+        break;
+      }
+    }
+  }
+}
+
+
+void midiOutputDevice::do_close()
+{
+  if (m_handle) 
+  {
+    midiOutReset(m_handle);
+
+    midiOutClose(m_handle); 
+    m_handle=0;
+  }
+}
+
+
+void midiOutputDevice::run()
+{
+  if (m_failed_time && GetTickCount()>m_failed_time+1000)
+  {
+    // try to reopen
+    m_failed_time=0;
+    do_open();
+  }
+}
+
+void midiOutputDevice::midiSend(const unsigned char *buf, int len)
+{
+  if (m_handle && len>0 && len <= 3)
+  {
+    int a = buf[0];
+    if (len>=2) a|=(((int)buf[1])<<8);
+    if (len>=3) a|=(((int)buf[2])<<16);
+    if (midiOutShortMsg(m_handle,a) != MMSYSERR_NOERROR && !m_failed_time)
+      m_failed_time=GetTickCount();
+  }
+}

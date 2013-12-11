@@ -110,6 +110,7 @@ class scriptInstance
         OUTPUT_INDEX_BASE=0x50000
     };
     static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
+    static EEL_F * NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
 };
 
 
@@ -507,6 +508,43 @@ EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest
 }
 
 
+EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_device)
+{
+  scriptInstance *_this = (scriptInstance*)opaque;
+  if (_this)
+  {
+    int output_idx = (int) floor(*dest_device+0.5);
+    outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
+    if (output || output_idx == -1 || output_idx==-100)
+    {
+      unsigned char msg[3];
+      EEL_F **vms = _this->m_var_msgs;
+      msg[0] = vms[0] ? (int) (vms[0][0]+0.5) : 0;
+      msg[1] = vms[1] ? (int) (vms[1][0]+0.5) : 0;
+      msg[2] = vms[2] ? (int) (vms[2][0]+0.5) : 0;
+
+      if (output)
+      {
+        output->midiSend(msg,3);
+      }
+      else if (output_idx==-100)
+      {
+        int n;
+        for (n=0;n<g_outputs.GetSize();n++)
+          g_outputs.Get(n)->midiSend(msg,3);
+      }
+      else 
+      {
+        int n;
+        for (n=0;n<_this->m_out_devs.GetSize();n++)
+          _this->m_out_devs.Get(n)->midiSend(msg,3);
+      }
+    }
+  }
+  return dest_device;
+}
+
+
 void scriptInstance::reloadScript(WDL_FastString &results)
 {
   clear();
@@ -620,7 +658,7 @@ void scriptInstance::reloadScript(WDL_FastString &results)
                   if (!rec->m_handle)
                     results.AppendFormatted(1024,"Warning: attached to un-opened device '%s'\r\n",rec->m_name_used);
                   else
-                    results.AppendFormatted(1024,"Attached to device '%s'\r\n",rec->m_name_used);
+                    results.AppendFormatted(1024,"Attached to already-opened device '%s'\r\n",rec->m_name_used);
                 }
                 else if (rec->m_name_used)
                   results.AppendFormatted(1024,"Warning: tried to open device '%s' but failed\r\n",rec->m_name_used);
@@ -656,7 +694,38 @@ void scriptInstance::reloadScript(WDL_FastString &results)
             {
               dp += 5;
               while (*dp == ' ') dp++;
-              results.AppendFormatted(1024,"Warning: todo: @output MIDI: support");
+              const char *substr = dp;
+              int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
+
+              bool is_reuse=false;
+              midiOutputDevice *rec = new midiOutputDevice(substr,skipcnt, &g_outputs);
+              if (!rec->m_handle)
+              {
+                if (rec->m_open_would_use_altdev)
+                {
+                  midiOutputDevice *tmp=rec->m_open_would_use_altdev;
+                  delete rec;
+                  rec=tmp;
+                  is_reuse=true;
+
+                  if (!rec->m_handle)
+                    results.AppendFormatted(1024,"Warning: attached to un-opened device '%s'\r\n",rec->m_name_used);
+                  else
+                    results.AppendFormatted(1024,"Attached to already-opened device '%s'\r\n",rec->m_name_used);
+                }
+                else if (rec->m_name_used)
+                  results.AppendFormatted(1024,"Warning: tried to open device '%s' but failed\r\n",rec->m_name_used);
+                else
+                  results.AppendFormatted(1024,"Warning: tried to open device matching '%s'(%d) but failed, will retry\r\n",substr,skipcnt);
+              }
+
+              EEL_F *var=NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+              if (var) *var=m_out_devs.GetSize() + OUTPUT_INDEX_BASE;
+              m_out_devs.Add(rec);
+
+              if (!is_reuse) g_outputs.Add(rec);
+
+
             }
             else
             {
@@ -665,9 +734,9 @@ void scriptInstance::reloadScript(WDL_FastString &results)
                 dp+=4;
                 while (*dp == ' ') dp++;
               }
-              bool is_reuse=false;
               oscOutputDevice *r = NULL;
               int x;
+              bool is_reuse=false;
               for (x=0;x<g_outputs.GetSize();x++)
               {
                 outputDevice *d = g_outputs.Get(x);
@@ -765,7 +834,6 @@ void scriptInstance::reloadScript(WDL_FastString &results)
 
   if (!m_in_devs.GetSize()) results.Append("Warning: No @input opened\r\n");
   if (!m_out_devs.GetSize()) results.Append("Warning: No @output opened\r\n");
-  if (!m_formats.GetSize()) results.Append("Warning: No formats appear to be defined in code using { }\r\n");
 
   results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",
       m_in_devs.GetSize(),m_out_devs.GetSize(),m_formats.GetSize());
@@ -1066,6 +1134,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
   NSEEL_init();
   NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm,(char *)_asm_generic3parm_end-(char *)_asm_generic3parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
+  NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm,(char *)_asm_generic1parm_end-(char *)_asm_generic1parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
   // todo: midisend(), oscmatch(), oscpop()
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
