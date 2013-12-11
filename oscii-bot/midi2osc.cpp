@@ -43,9 +43,6 @@ static void BSWAPINTMEM(void *buf)
 BOOL systray_add(HWND hwnd, UINT uID, HICON hIcon, LPSTR lpszTip);
 BOOL systray_del(HWND hwnd, UINT uID);
 
-int g_recent_events[4];
-
-
 class outputDevice {
   protected:
     outputDevice() { }
@@ -68,20 +65,9 @@ class inputDevice {
     WDL_PtrKeyedArray<EEL_F *> m_instances;
 };
 
-struct incomingEvent 
-{
-  EEL_F *dev_ptr;
-  unsigned char msg[3];
-};
+int g_recent_events[4];
+const char *g_code_names[4] = { "@init", "@timer", "@msg", "@oscmsg" };
 
-class formatStringRec
-{
-  public:
-    formatStringRec() { }
-    ~formatStringRec() { values.Empty(true); }
-
-    WDL_PtrList<WDL_FastString> values; // first is mandatory, following are optional
-};
 
 class scriptInstance 
 {
@@ -97,6 +83,11 @@ class scriptInstance
     }
     ~scriptInstance() 
     {
+      clear();
+    }
+    void reloadScript(WDL_FastString &results);
+    void clear()
+    {
       m_formats.Empty(true);
       int x;
       for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
@@ -105,16 +96,33 @@ class scriptInstance
         m_code[x]=0;
       }
       if (m_vm) NSEEL_VM_free(m_vm);
+      m_vm=0;
+      m_incoming_events.Clear();
     }
-    void reloadScript(WDL_FastString &results);
 
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
     bool run(double curtime, WDL_FastString &results);
 
     WDL_String m_fn;
 
+    struct incomingEvent 
+    {
+      EEL_F *dev_ptr;
+      unsigned char msg[3];
+    };
+
+
     WDL_TypedQueue<incomingEvent> m_incoming_events; 
     WDL_Mutex m_incoming_events_mutex;
+
+    class formatStringRec
+    {
+      public:
+        formatStringRec() { }
+        ~formatStringRec() { values.Empty(true); }
+
+        WDL_PtrList<WDL_FastString> values; // first is mandatory, following are optional
+    };
 
     WDL_PtrList<formatStringRec> m_formats;
 
@@ -135,11 +143,6 @@ WDL_PtrList<scriptInstance> g_scripts;
 WDL_PtrList<inputDevice> g_inputs;
 WDL_PtrList<outputDevice> g_outputs;
 
-
-
-
-
-const char *g_code_names[4] = { "@init", "@timer", "@msg", "@oscmsg" };
 
 class OscMessageWrite
 {
@@ -397,7 +400,7 @@ public:
 class midiInputDevice : public inputDevice
 {
 public:
-  midiInputDevice(const char *namesubstr, int skipcnt) 
+  midiInputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<inputDevice> *reuseDevList) 
   {
     // found device!
     m_name_substr = strdup(namesubstr);
@@ -407,7 +410,7 @@ public:
     m_open_would_use_altdev = NULL;
     m_last_dev_idx=-1;
     
-    do_open(true);
+    do_open(reuseDevList);
   }
 
   virtual ~midiInputDevice() 
@@ -419,7 +422,7 @@ public:
 
   virtual const char *get_type() { return "MIDI"; }
 
-  void do_open(bool allowReuseOtherDev=false)
+  void do_open(WDL_PtrList<inputDevice> *reuseDevList=NULL)
   {
     do_close();
     m_lastmsgtime = GetTickCount();
@@ -437,12 +440,12 @@ public:
           free(m_name_used);
           m_name_used = strdup(caps.szPname);
 
-          if (allowReuseOtherDev)
+          if (reuseDevList)
           {
             int x;
-            for (x=0;x<g_inputs.GetSize();x++)
+            for (x=0;x<reuseDevList->GetSize();x++)
             {
-              inputDevice *dev=g_inputs.Get(x);
+              inputDevice *dev=reuseDevList->Get(x);
               if (dev && !strcmp(dev->get_type(),"MIDI"))
               {
                 midiInputDevice *mid = (midiInputDevice *)dev;
@@ -581,7 +584,7 @@ public:
     {
       if (_this) 
       {
-        incomingEvent item;
+        scriptInstance::incomingEvent item;
         item.msg[0]=(unsigned char)(dwParam1&0xff);
         item.msg[1]=(unsigned char)((dwParam1>>8)&0xff);
         item.msg[2]=(unsigned char)((dwParam1>>16)&0xff);
@@ -612,7 +615,7 @@ public:
   int m_input_skipcnt;
   DWORD m_lastmsgtime;
 
-  midiInputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in g_inputs
+  midiInputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in reuseDevList
   int m_last_dev_idx;
 
 };
@@ -865,19 +868,8 @@ EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest
 
 void scriptInstance::reloadScript(WDL_FastString &results)
 {
-  m_formats.Empty(true);
+  clear();
 
-  // no other threads should be going now
-  m_incoming_events.Clear();
-
-  int x;
-  for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
-  {
-    if (m_code[x]) NSEEL_code_free(m_code[x]);
-    m_code[x]=0;
-  }
-
-  if (m_vm) NSEEL_VM_free(m_vm);
   m_vm = NSEEL_VM_alloc();
   NSEEL_VM_SetCustomFuncThis(m_vm,this);
 
@@ -886,6 +878,8 @@ void scriptInstance::reloadScript(WDL_FastString &results)
   m_var_msgs[1] = NSEEL_VM_regvar(m_vm,"msg2");
   m_var_msgs[2] = NSEEL_VM_regvar(m_vm,"msg3");
   m_var_msgs[3] = NSEEL_VM_regvar(m_vm,"msgdev");
+
+  int x;
   for (x=0;x<sizeof(m_var_oscfmt)/sizeof(m_var_oscfmt[0]);x++)
   {
     char tmp[32];
@@ -974,7 +968,7 @@ void scriptInstance::reloadScript(WDL_FastString &results)
               const char *substr = dp;
               int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
 
-              midiInputDevice *rec = new midiInputDevice(substr,skipcnt);
+              midiInputDevice *rec = new midiInputDevice(substr,skipcnt, &g_inputs);
               bool is_reuse=false;
               if (!rec->m_handle)
               {
@@ -1056,7 +1050,7 @@ void scriptInstance::reloadScript(WDL_FastString &results)
               {
                 is_reuse=false;
                 r = new oscOutputDevice(dp, lp.getnumtokens()>=4 ? lp.gettoken_int(3) : 0,
-                                                           lp.getnumtokens()>=5 ? lp.gettoken_int(4) : -1);
+                                            lp.getnumtokens()>=5 ? lp.gettoken_int(4) : -1);
                 if (r->m_sendsock<0)
                 {
                   results.AppendFormatted(1024,"Warning: failed creating destination for @output '%s' -> '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(2));
