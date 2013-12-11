@@ -11,6 +11,7 @@
 #include "../WDL/wdlstring.h"
 #include "../WDL/ptrlist.h"
 #include "../WDL/queue.h"
+#include "../WDL/assocarray.h"
 #include "../WDL/mutex.h"
 #include "../WDL/lineparse.h"
 
@@ -108,6 +109,8 @@ class scriptInstance
     void reloadScript(WDL_FastString &results);
 
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
+    bool run(double curtime, WDL_FastString &results);
+
     WDL_String m_fn;
 
     WDL_TypedQueue<incomingEvent> m_incoming_events; 
@@ -416,7 +419,7 @@ public:
 
   virtual const char *get_type() { return "MIDI"; }
 
-  void do_open(bool allowReuseOtherDev)
+  void do_open(bool allowReuseOtherDev=false)
   {
     do_close();
     m_lastmsgtime = GetTickCount();
@@ -805,7 +808,7 @@ EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest
       if (fmtcnt >= 0 && fmtcnt < 10)
       {
         char buf[1024];
-#define FOO(x) (m_var_oscfmt[x] ? m_var_oscfmt[x][0]:0.0)
+#define FOO(x) (_this->m_var_oscfmt[x] ? _this->m_var_oscfmt[x][0]:0.0)
         WDL_snprintf(buf,sizeof(buf),fmt, FOO(0),FOO(1),FOO(2),FOO(3),FOO(4),FOO(5),FOO(6),FOO(7),FOO(8),FOO(9));
 #undef FOO
 
@@ -1129,11 +1132,59 @@ void scriptInstance::reloadScript(WDL_FastString &results)
 
   if (!inputs_used) results.Append("Warning: No @input opened\r\n");
   if (!outputs_used) results.Append("Warning: No @output opened\r\n");
-  if (!g_formats.GetSize()) results.Append("Warning: No formats appear to be defined in code using { }\r\n");
+  if (!m_formats.GetSize()) results.Append("Warning: No formats appear to be defined in code using { }\r\n");
 
   results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",
-      inputs_used,outputs_used,g_formats.GetSize());
+      inputs_used,outputs_used,m_formats.GetSize());
 
+}
+
+bool scriptInstance::run(double curtime, WDL_FastString &results)
+{
+  bool rv=false;
+  if (m_var_time) *m_var_time = curtime;
+
+
+  if (m_incoming_events.Available())
+  {
+    static WDL_TypedBuf<incomingEvent> tmp;
+
+    m_incoming_events_mutex.Enter();
+    tmp.Resize(m_incoming_events.Available(),false);
+    if (tmp.GetSize()==m_incoming_events.Available())
+    {
+      memcpy(tmp.Get(),m_incoming_events.Get(),tmp.GetSize()*sizeof(incomingEvent));
+    }
+    else
+    {
+      tmp.Resize(0,false);
+    }
+    m_incoming_events.Clear();
+    m_incoming_events_mutex.Leave();
+
+    int x;
+    for (x=0;x<tmp.GetSize();x++)
+    {
+      incomingEvent *evt = tmp.Get()+x;
+
+      int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
+      if (g_recent_events[0] != asInt)
+      {
+        memmove(g_recent_events+1,g_recent_events,sizeof(g_recent_events)-sizeof(g_recent_events[0]));
+        g_recent_events[0]=asInt;
+        rv=true;
+      }
+
+
+      if (m_var_msgs[0]) m_var_msgs[0][0] = evt->msg[0];
+      if (m_var_msgs[1]) m_var_msgs[1][0] = evt->msg[1];
+      if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
+      if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
+      NSEEL_code_execute(m_code[2]);
+    }
+  }
+  if (m_vm && m_code[1]) NSEEL_code_execute(m_code[1]); // timer follows messages
+  return rv;
 }
 
 
@@ -1149,7 +1200,7 @@ void load_all_scripts(WDL_FastString &results)
   g_outputs.Empty(true);
 
   int x;
-  for (x=0;x<m_scripts.GetSize(); x++) m_scripts.Get(x)->reloadScript(results);
+  for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->reloadScript(results);
 
   results.AppendFormatted(512,"\r\nTotal: %d inputs, %d outputs\r\n", g_inputs.GetSize(),g_outputs.GetSize());
 
@@ -1194,48 +1245,13 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           SetDlgItemText(hwndDlg,IDC_EDIT1,results.Get());
         }
 
-        if (m_var_time) *m_var_time = timeGetTime()/1000.0;
-
         bool needUIupdate=false;
 
-        if (g_incoming_events.Available())
+        double curtime = timeGetTime()/1000.0;
+        for (x=0;x<g_scripts.GetSize();x++)
         {
-          static WDL_TypedBuf<incomingEvent> tmp;
-
-          g_incoming_events_mutex.Enter();
-          tmp.Resize(g_incoming_events.Available(),false);
-          if (tmp.GetSize()==g_incoming_events.Available())
-          {
-            memcpy(tmp.Get(),g_incoming_events.Get(),tmp.GetSize()*sizeof(incomingEvent));
-          }
-          else
-          {
-            tmp.Resize(0,false);
-          }
-          g_incoming_events.Clear();
-          g_incoming_events_mutex.Leave();
-
-          for (x=0;x<tmp.GetSize();x++)
-          {
-            incomingEvent *evt = tmp.Get()+x;
-
-            int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
-            if (g_recent_events[0] != asInt)
-            {
-              memmove(g_recent_events+1,g_recent_events,sizeof(g_recent_events)-sizeof(g_recent_events[0]));
-              g_recent_events[0]=asInt;
-              needUIupdate=true;
-            }
-
-
-            if (m_var_msgs[0]) m_var_msgs[0][0] = evt->msg[0];
-            if (m_var_msgs[1]) m_var_msgs[1][0] = evt->msg[1];
-            if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
-            if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
-            NSEEL_code_execute(m_code[2]);
-          }
+          if (g_scripts.Get(x)->run(curtime,results)) needUIupdate=true;
         }
-        if (m_vm && m_code[1]) NSEEL_code_execute(m_code[1]); // timer follows messages
 
         for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run();  // send queued messages
 
@@ -1308,7 +1324,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   JNL::open_socketlib();
 
   NSEEL_init();
-  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm,(char *)_asm_generic3parm_end-(char *)_asm_generic3parm,NSEEL_PProc_THIS,(void *)&_send_oscevent);
+  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm,(char *)_asm_generic3parm_end-(char *)_asm_generic3parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
   // todo: midisend(), oscmatch(), oscpop()
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
