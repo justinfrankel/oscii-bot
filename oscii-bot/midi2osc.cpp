@@ -40,6 +40,7 @@ class scriptInstance
     { 
       m_fn.Set(fn);
       m_vm=0;
+      m_cur_oscmsg=0;
       memset(m_code,0,sizeof(m_code));
       clear();
     }
@@ -106,6 +107,9 @@ class scriptInstance
     NSEEL_VMCTX m_vm;
     NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
 
+    OscMessageRead *m_cur_oscmsg;
+  
+
     enum {
         FORMAT_INDEX_BASE=0x10000,
         INPUT_INDEX_BASE =0x40000,
@@ -120,7 +124,64 @@ WDL_PtrList<scriptInstance> g_scripts;
 WDL_PtrList<inputDevice> g_inputs; // these are owned here, scriptInstances reference them
 WDL_PtrList<outputDevice> g_outputs;
 
+class oscInputDevice : public inputDevice
+{
+public:
+  oscInputDevice(struct sockaddr_in addr)
+  {
+    m_recvaddr = addr;
+    m_recvsock=socket(AF_INET, SOCK_DGRAM, 0);
+    if (m_recvsock>=0)
+    {
+      int on=1;
+      setsockopt(m_recvsock, SOL_SOCKET, SO_BROADCAST, (char*)&on, sizeof(on));
+      if (!bind(m_recvsock, (struct sockaddr*)&m_recvaddr, sizeof(struct sockaddr))) 
+      {
+        SET_SOCK_BLOCK(m_recvsock, false);
+      }
+      else
+      {
+        closesocket(m_recvsock);
+        m_recvsock=-1;
+      }
+    }
+  }
+  virtual ~oscInputDevice()
+  {
+    if (m_recvsock >= 0)
+    {
+      shutdown(m_recvsock, SHUT_RDWR);
+      closesocket(m_recvsock);
+      m_recvsock=-1;
+    }
+  }
 
+  virtual void start() {  }
+
+  virtual void run(WDL_FastString &textOut)
+  {
+    for (;;)
+    {
+      char buf[MAX_OSC_MSG_LEN];
+      buf[0]=0;
+      int len=recvfrom(m_recvsock, buf, sizeof(buf), 0, 0, 0);
+      if (len<1) break;
+
+      int x;
+      const int n=m_instances.GetSize();
+      const rec *r = m_instances.Get();
+      for (x=0;x<n; x++)
+        if (r[x].callback) r[x].callback(r[x].data1,r[x].data2,1,len,(void*)buf);
+    }
+  }
+
+  virtual const char *get_type() { return "OSC"; }
+
+  int m_recvsock;
+  struct sockaddr_in m_recvaddr;
+  WDL_Queue m_recvq;
+
+};
 
 class oscOutputDevice : public outputDevice
 {
@@ -245,7 +306,6 @@ public:
     m_sendq.Add(src,len);
   }
   virtual const char *get_type() { return "OSC"; }
-
 
   int m_sendsock;
   int m_maxpacketsz, m_sendsleep;
@@ -619,6 +679,9 @@ void scriptInstance::reloadScript(WDL_FastString &results)
         if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
         {
           results.Append("Usage: @input devicehandle \"substring devicename match\" [skip_count]\r\n");
+          results.Append("Usage: @input devicehandle \"MIDI:substring devicename match\" [skip_count]\r\n");
+          results.Append("Usage: @input devicehandle \"OSC:1.2.3.4:port\"\r\n");
+          results.Append("Usage: @input devicehandle \"OSC:*:port\"\r\n");
         }
         else
         {
@@ -633,7 +696,67 @@ void scriptInstance::reloadScript(WDL_FastString &results)
             {
               dp += 4;
               while (*dp == ' ') dp++;
-              results.AppendFormatted(1024,"Warning: todo: @input MIDI: support");
+
+              char buf[512];
+              lstrcpyn_safe(buf,dp,sizeof(buf));
+              char *portstr = strstr(buf,":");
+              int port = 0;
+              if (portstr)
+              {
+                *portstr++ = 0;
+                port = atoi(portstr);
+              }
+
+              struct sockaddr_in addr;
+              addr.sin_family=AF_INET;
+              if (buf[0] && buf[0] != '*') addr.sin_addr.s_addr = inet_addr(buf);
+              if (addr.sin_addr.s_addr == INADDR_NONE) addr.sin_addr.s_addr = INADDR_ANY;
+              addr.sin_port=htons(port);
+
+              int x;
+              bool is_reuse=false;
+              oscInputDevice *r=NULL;
+              for (x=0; x < g_inputs.GetSize(); x++)
+              {
+                inputDevice *dev = g_inputs.Get(x);
+                if (dev && !strcmp(dev->get_type(),"OSC"))
+                {
+                  oscInputDevice *od = (oscInputDevice *)dev;
+                  if (od->m_recvaddr.sin_port == addr.sin_port && od->m_recvaddr.sin_addr.s_addr == addr.sin_addr.s_addr)
+                  {
+                    r=od;
+                    is_reuse=true;
+
+                    results.AppendFormatted(1024,"Attached to already-opened listener '%s'\r\n",dp);
+
+                    break;
+                  }
+                }
+              }
+              if (!r)
+              {
+                r = new oscInputDevice(addr);
+                if (r->m_recvsock < 0)
+                {
+                  delete r;
+                  r=NULL;
+                  results.AppendFormatted(1024,"Error listening for '%s'\r\n",dp);
+                }
+                else
+                {
+                  results.AppendFormatted(1024,"Listening on '%s'\r\n",dp);
+                }
+              }
+              if (r)
+              {
+                EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+                if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+                r->addinst(messageCallback,this,dev_idx);
+                m_in_devs.Add(r);
+
+                if (!is_reuse) g_inputs.Add(r);
+              }
+
 
             }
             else
@@ -682,6 +805,8 @@ void scriptInstance::reloadScript(WDL_FastString &results)
         if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
         {
           results.Append("Usage: @output devicehandle \"host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\r\n");
+          results.Append("Usage: @output devicehandle \"OSC:host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\r\n");
+          results.Append("Usage: @output devicehandle \"MIDI:substring match\" [skip]\r\n");
         }
         else
         {
@@ -887,7 +1012,7 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
     const int endpos = tmp.GetSize();
     while (pos < endpos+1 - sizeof(incomingEvent))
     {
-      const incomingEvent *evt = (incomingEvent*) ((char *)tmp.Get()+pos);
+      incomingEvent *evt = (incomingEvent*) ((char *)tmp.Get()+pos);
       
       const int this_sz = ((sizeof(incomingEvent) + (evt->sz-3)) + 7) & ~7;
 
@@ -912,6 +1037,34 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
             if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
             if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
             NSEEL_code_execute(m_code[2]);
+          }
+        break;
+        case 1:
+          if (m_code[3])
+          {
+            int rd_pos = 0;
+            int rd_sz = evt->sz;
+            if (evt->sz > 20 && !strcmp((char*)evt->msg, "#bundle"))
+            {
+              rd_sz = *(int *)(evt->msg+16);
+              OSC_MAKEINTMEM4BE(&rd_sz);
+              rd_pos += 20;
+            }
+            while (rd_pos + rd_sz <= evt->sz)
+            {
+              OscMessageRead rmsg((char*)evt->msg + rd_pos, rd_sz);
+
+              m_cur_oscmsg = &rmsg;
+              NSEEL_code_execute(m_code[3]);
+              m_cur_oscmsg = NULL;
+
+              rd_pos += rd_sz+4;
+              if (rd_pos >= evt->sz) break;
+
+              rd_sz = *(int *)(evt->msg+rd_pos-4);
+              OSC_MAKEINTMEM4BE(&rd_sz);
+            }
+
           }
         break;
       }
@@ -1149,7 +1302,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   NSEEL_init();
   NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm,(char *)_asm_generic3parm_end-(char *)_asm_generic3parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
   NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm,(char *)_asm_generic1parm_end-(char *)_asm_generic1parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
-  // todo: midisend(), oscmatch(), oscpop()
+  // todo: oscmatch(), oscpop()
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
 
