@@ -61,7 +61,7 @@ class scriptInstance
       }
       if (m_vm) NSEEL_VM_free(m_vm);
       m_vm=0;
-      m_incoming_events.Clear();
+      m_incoming_events.Resize(0,false);
 
       m_var_time = 0;
       memset(m_var_msgs,0,sizeof(m_var_msgs));
@@ -71,13 +71,15 @@ class scriptInstance
 
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
     bool run(double curtime, WDL_FastString &results);
-    static void messageCallback(void *d1, void *d2, int type, void *msg);
+    static void messageCallback(void *d1, void *d2, char type, int msglen, void *msg);
 
     WDL_String m_fn;
 
-    struct incomingEvent 
+    struct incomingEvent
     {
       EEL_F *dev_ptr;
+      int sz; // size of msg[], 1..3 for midi, anything for OSC
+      char type; // 0=midi, 1=OSC
       unsigned char msg[3];
     };
 
@@ -86,7 +88,7 @@ class scriptInstance
     WDL_PtrList<inputDevice> m_in_devs;
     WDL_PtrList<outputDevice> m_out_devs;
 
-    WDL_TypedQueue<incomingEvent> m_incoming_events; 
+    WDL_HeapBuf m_incoming_events;  // incomingEvent list, each is 8-byte aligned
     WDL_Mutex m_incoming_events_mutex;
 
     class formatStringRec
@@ -840,20 +842,27 @@ void scriptInstance::reloadScript(WDL_FastString &results)
 
 }
 
-void scriptInstance::messageCallback(void *d1, void *d2, int type, void *msg)
+void scriptInstance::messageCallback(void *d1, void *d2, char type, int len, void *msg)
 {
   scriptInstance *_this  = (scriptInstance *)d1;
-  if (type == 0 && _this && msg)
+  if (_this && msg)
   {
     // MIDI
-    if (_this->m_incoming_events.Available() < 2048)
+    if (_this->m_incoming_events.GetSize() < 65536)
     {
-      scriptInstance::incomingEvent item;
-      item.dev_ptr = (EEL_F*)d2;
-      memcpy(item.msg,msg,3);
+      const int this_sz = ((sizeof(incomingEvent) + (len-3)) + 7) & ~7;
 
       _this->m_incoming_events_mutex.Enter();
-      _this->m_incoming_events.Add(&item,1);
+      const int oldsz = _this->m_incoming_events.GetSize();
+      _this->m_incoming_events.Resize(oldsz + this_sz,false);
+      if (_this->m_incoming_events.GetSize() == oldsz+this_sz)
+      {
+        incomingEvent *item=(incomingEvent *) ((char *)_this->m_incoming_events.Get() + oldsz);
+        item->dev_ptr = (EEL_F*)d2;
+        item->sz = len;
+        item->type = type;
+        memcpy(item->msg,msg,len);
+      }
       _this->m_incoming_events_mutex.Leave();
     }
   }
@@ -865,42 +874,47 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
   if (m_var_time) *m_var_time = curtime;
 
 
-  if (m_incoming_events.Available())
+  if (m_incoming_events.GetSize())
   {
-    static WDL_TypedBuf<incomingEvent> tmp;
+    static WDL_HeapBuf tmp;
 
     m_incoming_events_mutex.Enter();
-    tmp.Resize(m_incoming_events.Available(),false);
-    if (tmp.GetSize()==m_incoming_events.Available())
-    {
-      memcpy(tmp.Get(),m_incoming_events.Get(),tmp.GetSize()*sizeof(incomingEvent));
-    }
-    else
-    {
-      tmp.Resize(0,false);
-    }
-    m_incoming_events.Clear();
+    tmp.CopyFrom(&m_incoming_events,false);
+    m_incoming_events.Resize(0,false);
     m_incoming_events_mutex.Leave();
 
-    int x;
-    for (x=0;x<tmp.GetSize();x++)
+    int pos=0;
+    const int endpos = tmp.GetSize();
+    while (pos < endpos+1 - sizeof(incomingEvent))
     {
-      incomingEvent *evt = tmp.Get()+x;
+      const incomingEvent *evt = (incomingEvent*) ((char *)tmp.Get()+pos);
+      
+      const int this_sz = ((sizeof(incomingEvent) + (evt->sz-3)) + 7) & ~7;
 
-      int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
-      if (g_recent_events[0] != asInt)
+      if (pos+this_sz > endpos) break;
+      pos += this_sz;
+
+      switch (evt->type)
       {
-        memmove(g_recent_events+1,g_recent_events,sizeof(g_recent_events)-sizeof(g_recent_events[0]));
-        g_recent_events[0]=asInt;
-        rv=true;
+        case 0:
+          if (evt->sz == 3)
+          {
+            int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
+            if (g_recent_events[0] != asInt)
+            {
+              memmove(g_recent_events+1,g_recent_events,sizeof(g_recent_events)-sizeof(g_recent_events[0]));
+              g_recent_events[0]=asInt;
+              rv=true;
+            }
+
+            if (m_var_msgs[0]) m_var_msgs[0][0] = evt->msg[0];
+            if (m_var_msgs[1]) m_var_msgs[1][0] = evt->msg[1];
+            if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
+            if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
+            NSEEL_code_execute(m_code[2]);
+          }
+        break;
       }
-
-
-      if (m_var_msgs[0]) m_var_msgs[0][0] = evt->msg[0];
-      if (m_var_msgs[1]) m_var_msgs[1][0] = evt->msg[1];
-      if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
-      if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
-      NSEEL_code_execute(m_code[2]);
     }
   }
   if (m_vm && m_code[1]) NSEEL_code_execute(m_code[1]); // timer follows messages

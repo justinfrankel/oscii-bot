@@ -201,7 +201,7 @@ void CALLBACK midiInputDevice::callbackFunc(
       const int n=_this->m_instances.GetSize();
       const rec *r = _this->m_instances.Get();
       for (x=0;x<n; x++)
-        if (r[x].callback) r[x].callback(r[x].data1,r[x].data2,0, (void*)msg);
+        if (r[x].callback) r[x].callback(r[x].data1,r[x].data2,0,3,(void*)msg);
     }
   }
 }

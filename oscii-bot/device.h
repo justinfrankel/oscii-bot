@@ -21,7 +21,7 @@ class inputDevice {
     inputDevice() { }
     struct rec
     {
-      void (*callback)(void *d1, void *d2, int type, void *msg); // type=0 for MIDI
+      void (*callback)(void *d1, void *d2, char type, int msglen, void *msg); // type=0 for MIDI, 1=osc
       void *data1;
       void *data2;
     };
@@ -33,7 +33,7 @@ class inputDevice {
     virtual void run(WDL_FastString &textOut)=0;
     virtual const char *get_type()=0;
 
-    void addinst(void (*callback)(void *d1, void *d2, int type, void *msg), void *d1, void *d2)
+    void addinst(void (*callback)(void *d1, void *d2, char type, int msglen, void *msg), void *d1, void *d2)
     {
       const rec r={callback,d1,d2};
       m_instances.Add(r);
