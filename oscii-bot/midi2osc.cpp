@@ -104,7 +104,9 @@ class scriptInstance
 
     WDL_PtrList<formatStringRec> m_formats;
 
-    EEL_F *m_var_time, *m_var_msgs[4], *m_var_oscfmt[10];
+    enum { MAX_OSC_FMTS=16 };
+
+    EEL_F *m_var_time, *m_var_msgs[4], *m_var_oscfmt[MAX_OSC_FMTS];
     NSEEL_VMCTX m_vm;
     NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
 
@@ -546,7 +548,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
               if (!l || !ct || l >= sizeof(fs)) break;
               lstrcpyn(fs,fmt,l+1);
 
-              const double v = fmt_parmpos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[fmt_parmpos] ? _this->m_var_oscfmt[fmt_parmpos][0] : 0.0;
+              const double v = fmt_parmpos < MAX_OSC_FMTS && _this->m_var_oscfmt[fmt_parmpos] ? _this->m_var_oscfmt[fmt_parmpos][0] : 0.0;
               fmt_parmpos++;
 
               if (ct == 'x' || ct == 'X' || ct == 'd' || ct == 'u')
@@ -737,7 +739,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
                 else if (fmt_char == 'c')
                 {
                   if (!msg[0]) return 0.0;
-                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                  if (match_fmt_pos < MAX_OSC_FMTS && _this->m_var_oscfmt[match_fmt_pos])
                     _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)msg[0];
                   msg++;
                 }
@@ -747,7 +749,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
                   while (msg[len] >= '0' && msg[len] <= '9') len++;
                   if (!len) return 0.0;
 
-                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                  if (match_fmt_pos < MAX_OSC_FMTS && _this->m_var_oscfmt[match_fmt_pos])
                   {
                     char *bl=(char*)msg;
                     if (fmt_char == 'd') 
@@ -767,7 +769,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
                          ) len++;
                   if (!len) return 0.0;
 
-                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                  if (match_fmt_pos < MAX_OSC_FMTS && _this->m_var_oscfmt[match_fmt_pos])
                   {
                     char *bl=(char*)msg;
                     _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)strtoul(msg,&bl,16);
@@ -787,7 +789,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
                   }
                   if (!len) return 0.0;
 
-                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                  if (match_fmt_pos < MAX_OSC_FMTS && _this->m_var_oscfmt[match_fmt_pos])
                     _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)atof(msg);
 
                   msg+=len;
@@ -861,7 +863,7 @@ void scriptInstance::reloadScript(WDL_FastString &results)
   m_var_msgs[3] = NSEEL_VM_regvar(m_vm,"msgdev");
 
   int x;
-  for (x=0;x<sizeof(m_var_oscfmt)/sizeof(m_var_oscfmt[0]);x++)
+  for (x=0;x<MAX_OSC_FMTS;x++)
   {
     char tmp[32];
     sprintf(tmp,"oscfmt%d",x);
