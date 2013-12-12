@@ -438,58 +438,77 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
   }
 }
 
-static int validate_format(const char *fmt)
+static int validate_format_specifier(const char *fmt_in, char *typeOut)
 {
-  // only allow %f
+  const char *fmt = fmt_in+1;
   int state=0;
-  int cnt=0;
+  if (fmt_in[0] != '%') return 0; // ugh passed a non-specifier
   while (*fmt)
   {
-    if (state==0)
+    const char c = *fmt++;
+    if (c == 'f'|| c=='e' || c=='E' || c=='g' || c=='G' || c == 'd' || c == 'u' || c == 'x' || c == 'X' || c == 'c') 
+    {     
+      if (typeOut) *typeOut = c;
+      return fmt - fmt_in;
+    }
+    else if (c == '.') 
     {
-      if (*fmt == '%') state=1;
+      if (state&2) break;
+      state |= 2;
+    }
+    else if (c == '+') 
+    {
+      if (state&(32|16|8|4)) break;
+      state |= 8;
+    }
+    else if (c == '-') 
+    {
+      if (state&(32|16|8|4)) break;
+      state |= 16;
+    }
+    else if (c == ' ') 
+    {
+      if (state&(32|16|8|4)) break;
+      state |= 32;
+    }
+    else if (c >= '0' && c <= '9') 
+    {
+      state|=4;
+    }
+    else 
+    {
+      break; // %unknown-char
+    }
+  }
+  return 0;
+
+}
+
+static bool validate_format_strings(const char *fmt)
+{
+  while (*fmt)
+  {
+    if (*fmt == '%') 
+    {
+      if (fmt[1] == '%') 
+      {
+        fmt+=2;
+      }
+      else
+      {
+        const int len = validate_format_specifier(fmt,NULL);
+        if (!len) return false; 
+        fmt += len;
+      }
     }
     else
     {
-      if (*fmt == 'f'||*fmt=='e' || *fmt=='E' || *fmt=='g' || *fmt=='G') 
-      {
-        cnt++;
-        state=0; // completed!
-      }
-      else if (*fmt == '.') 
-      {
-        if (state&2) return -1;
-        state |= 2;
-      }
-      else if (*fmt == '+') 
-      {
-        if (state&(32|16|8|4)) return -1;
-        state |= 8;
-      }
-      else if (*fmt == '-') 
-      {
-        if (state&(32|16|8|4)) return -1;
-        state |= 16;
-      }
-      else if (*fmt == ' ') 
-      {
-        if (state&(32|16|8|4)) return -1;
-        state |= 32;
-      }
-      else if (*fmt >= '0' && *fmt <= '9') 
-      {
-        state|=4;
-      }
-      else 
-      {
-        return -1; // %unknown-char
-      }
+      fmt++;
     }
-    
-    fmt++;
   }
-  return state? -1 : cnt;
+  return true;
 }
+
 
 EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
 {
@@ -507,13 +526,53 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
         char fmt_type = 0;
         if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
-        int fmtcnt=validate_format(fmt);
-        if (fmtcnt >= 0 && fmtcnt < 10)
+        if (validate_format_strings(fmt))
         {
-          char buf[1024];
-  #define FOO(x) (_this->m_var_oscfmt[x] ? _this->m_var_oscfmt[x][0]:0.0)
-          WDL_snprintf(buf,sizeof(buf),fmt, FOO(0),FOO(1),FOO(2),FOO(3),FOO(4),FOO(5),FOO(6),FOO(7),FOO(8),FOO(9));
-  #undef FOO
+          char buf[1024+128];
+          int fmt_parmpos = 0;
+          char *op = buf;
+          while (*fmt && op < buf+sizeof(buf)-128)
+          {
+            if (fmt[0] == '%' && fmt[1] == '%') 
+            {
+              *op++ = '%';
+              fmt+=2;
+            }
+            else if (fmt[0] == '%')
+            {
+              char ct=0;
+              const int l=validate_format_specifier(fmt,&ct);
+              char fs[128];
+              if (!l || !ct || l >= sizeof(fs)) break;
+              lstrcpyn(fs,fmt,l+1);
+
+              const double v = fmt_parmpos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[fmt_parmpos] ? _this->m_var_oscfmt[fmt_parmpos][0] : 0.0;
+              fmt_parmpos++;
+
+              if (ct == 'x' || ct == 'X' || ct == 'd' || ct == 'u')
+              {
+                WDL_snprintf(op,64,fs,(int) (v+0.5));
+              }
+              else if (ct == 'c')
+              {
+                char c = (char) (int)(v+0.5);
+                if (!c) c=' ';
+                WDL_snprintf(op,64,fs,c);
+              }
+              else
+                WDL_snprintf(op,64,fs,v);
+
+              while (*op) op++;
+
+              fmt += l;
+            }
+            else 
+            {
+              *op++ = *fmt++;
+            }
+
+          }
+          *op=0;
 
           OscMessageWrite wr;
           wr.PushWord(buf);
@@ -675,21 +734,27 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
                   if (msgc != fmt_char) return 0.0;
                   msg++;
                 }
-                else if (fmt_char == 'c' || fmt_char == 'C')
+                else if (fmt_char == 'c')
                 {
                   if (!msg[0]) return 0.0;
                   if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
                     _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)msg[0];
                   msg++;
                 }
-                else if (fmt_char == 'd' || fmt_char == 'D')
+                else if (fmt_char == 'd' || fmt_char == 'u')
                 {
                   int len=0;
                   while (msg[len] >= '0' && msg[len] <= '9') len++;
                   if (!len) return 0.0;
 
                   if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
-                    _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)atoi(msg);
+                  {
+                    char *bl=(char*)msg;
+                    if (fmt_char == 'd') 
+                      _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)atoi(msg);
+                    else
+                      _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)strtoul(msg,&bl,10);
+                  }
 
                   msg+=len;
                 }
@@ -710,7 +775,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
 
                   msg+=len;
                 }
-                else if (fmt_char == 'f' || fmt_char == 'F')
+                else if (fmt_char == 'f')
                 {
                   int len=0;
                   bool haddot=false;
