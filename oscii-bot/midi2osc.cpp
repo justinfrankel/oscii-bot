@@ -803,7 +803,6 @@ void scriptInstance::reloadScript(WDL_FastString &results)
     m_var_oscfmt[x] = NSEEL_VM_regvar(m_vm,tmp);
   }
 
-  results.Append("Loading: ");
   results.Append(m_fn.Get());
   results.Append("\r\n");
 
@@ -1131,14 +1130,10 @@ void scriptInstance::reloadScript(WDL_FastString &results)
 
   fclose(fp);
 
-  results.Append("Loaded: ");
-  results.Append(m_fn.Get());
-  results.Append("\r\n");
-
   if (!m_in_devs.GetSize()) results.Append("Warning: No @input opened\r\n");
   if (!m_out_devs.GetSize()) results.Append("Warning: No @output opened\r\n");
 
-  results.AppendFormatted(512,"\r\n%d inputs, %d outputs, and %d formats opened\r\n",
+  results.AppendFormatted(512,"%d inputs, %d outputs opened, %d formats\r\n\r\n",
       m_in_devs.GetSize(),m_out_devs.GetSize(),m_formats.GetSize());
 
 }

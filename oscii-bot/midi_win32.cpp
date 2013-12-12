@@ -44,10 +44,10 @@ void midiInputDevice::do_open(WDL_PtrList<inputDevice> *reuseDevList)
 
         if (reuseDevList)
         {
-          int x;
-          for (x=0;x<reuseDevList->GetSize();x++)
+          int i;
+          for (i=0;i<reuseDevList->GetSize();i++)
           {
-            inputDevice *dev=reuseDevList->Get(x);
+            inputDevice *dev=reuseDevList->Get(i);
             if (dev && !strcmp(dev->get_type(),"MIDI"))
             {
               midiInputDevice *mid = (midiInputDevice *)dev;
@@ -250,10 +250,10 @@ void midiOutputDevice::do_open(WDL_PtrList<outputDevice> *reuseDevList)
 
         if (reuseDevList)
         {
-          int x;
-          for (x=0;x<reuseDevList->GetSize();x++)
+          int i;
+          for (i=0;i<reuseDevList->GetSize();i++)
           {
-            outputDevice *dev=reuseDevList->Get(x);
+            outputDevice *dev=reuseDevList->Get(i);
             if (dev && !strcmp(dev->get_type(),"MIDI"))
             {
               midiOutputDevice *mid = (midiOutputDevice *)dev;
