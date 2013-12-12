@@ -30,6 +30,7 @@ BOOL systray_del(HWND hwnd, UINT uID);
 
 
 int g_recent_events[4];
+char g_last_oscmsg[1024];
 const char *g_code_names[4] = { "@init", "@timer", "@msg", "@oscmsg" };
 
 
@@ -115,8 +116,10 @@ class scriptInstance
         INPUT_INDEX_BASE =0x40000,
         OUTPUT_INDEX_BASE=0x50000
     };
-    static EEL_F * NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
-    static EEL_F * NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
+    static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
+    static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
+    static EEL_F NSEEL_CGEN_CALL _osc_pop(void *opaque, EEL_F *typeptr);
+    static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, EEL_F *fmt);
 };
 
 
@@ -488,7 +491,7 @@ static int validate_format(const char *fmt)
   return state? -1 : cnt;
 }
 
-EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
+EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
   if (_this)
@@ -562,15 +565,186 @@ EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest
                 _this->m_out_devs.Get(n)->oscSend(ret,l);
             }
           }
+          return 1.0;
         }
       }
     }
   }
-  return value;
+  return 0.0;
 }
 
 
-EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_device)
+EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_pop(void *opaque, EEL_F *typeptr)
+{
+  scriptInstance *_this = (scriptInstance*)opaque;
+  *typeptr = 0.0;
+  if (_this && _this->m_cur_oscmsg)
+  {
+    const float *fptr=_this->m_cur_oscmsg->PopFloatArg(false);
+    if (fptr)
+    {
+      *typeptr = (EEL_F)'f';
+      return *fptr;
+    }
+    const int *iptr=_this->m_cur_oscmsg->PopIntArg(false);
+    if (iptr)
+    {
+      *typeptr = (EEL_F)'i';
+      return (EEL_F)*iptr;
+    }
+    const char *s=_this->m_cur_oscmsg->PopStringArg(false);
+    if (s)
+    {
+      *typeptr = (EEL_F)'s';
+      int i=0;
+      int shift = 0;
+      while (*s && shift < 24)
+      {
+        i|=*s++ << shift;
+        shift += 8;
+      }
+      return (EEL_F)i;
+    }
+  }
+  return 0.0;
+}
+EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
+{
+  scriptInstance *_this = (scriptInstance*)opaque;
+  if (_this && _this->m_cur_oscmsg)
+  {
+    formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
+    if (rec && rec->values.GetSize())
+    {
+      WDL_FastString *fstr = rec->values.Get(0);
+      const char *msg = _this->m_cur_oscmsg->GetMessage();
+      if (msg && fstr)
+      {
+        const char *fmt=fstr->Get();
+        int match_fmt_pos=0;
+        // check for match, updating m_var_oscfmt[*] as necessary
+        // %d=12345
+        // %f=12345[.678]
+        // %c=any nonzero char, ascii value
+        // %x=12354ab
+        // %*, %?, %+, %% literals
+        // * ? +  match minimal groups of 0+,1, or 1+ chars
+        for (;;)
+        {
+          const char fmtc = *fmt;
+          const char msgc = *msg;
+          if (!fmtc || !msgc) return fmtc==msgc ? 1.0 : 0.0;
+
+          switch (fmtc)
+          {
+            case '*':
+            case '+':
+              {
+                const char *nc = ++fmt;
+                if (!*nc) return 1.0; // match!
+
+                int nc_len=0;
+                while (nc[nc_len] && 
+                       nc[nc_len] != '%' && 
+                       nc[nc_len] != '*' &&
+                       nc[nc_len] != '+' &&
+                       nc[nc_len] != '?') nc_len++;
+                if (!nc_len) continue;
+
+                if (fmtc == '+') msg++; // require at least a single char to skip for +
+
+                while (*msg && strnicmp(msg,nc,nc_len)) msg++;
+              }
+            break;
+            case '?':
+              fmt++;
+              msg++;
+            break;
+            case '%':
+              {
+                const char fmt_char = fmt[1];
+                fmt+=2;
+
+                if (!fmt_char) return 0.0; // malformed
+
+                if (fmt_char == '*' || 
+                    fmt_char == '?' || 
+                    fmt_char == '+' || 
+                    fmt_char == '%')
+                {
+                  if (msgc != fmt_char) return 0.0;
+                  msg++;
+                }
+                else if (fmt_char == 'c' || fmt_char == 'C')
+                {
+                  if (!msg[0]) return 0.0;
+                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                    _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)msg[0];
+                  msg++;
+                }
+                else if (fmt_char == 'd' || fmt_char == 'D')
+                {
+                  int len=0;
+                  while (msg[len] >= '0' && msg[len] <= '9') len++;
+                  if (!len) return 0.0;
+
+                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                    _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)atoi(msg);
+
+                  msg+=len;
+                }
+                else if (fmt_char == 'x' || fmt_char == 'X')
+                {
+                  int len=0;
+                  while ((msg[len] >= '0' && msg[len] <= '9') ||
+                         (msg[len] >= 'A' && msg[len] <= 'F') ||
+                         (msg[len] >= 'a' && msg[len] <= 'f')
+                         ) len++;
+                  if (!len) return 0.0;
+
+                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                  {
+                    char *bl=(char*)msg;
+                    _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)strtoul(msg,&bl,16);
+                  }
+
+                  msg+=len;
+                }
+                else if (fmt_char == 'f' || fmt_char == 'F')
+                {
+                  int len=0;
+                  bool haddot=false;
+                  while (msg[len] >= '0' && msg[len] <= '9') len++;
+                  if (msg[len] == '.') 
+                  { 
+                    len++; 
+                    while (msg[len] >= '0' && msg[len] <= '9') len++;
+                  }
+                  if (!len) return 0.0;
+
+                  if (match_fmt_pos < sizeof(_this->m_var_oscfmt)/sizeof(_this->m_var_oscfmt[0]) && _this->m_var_oscfmt[match_fmt_pos])
+                    _this->m_var_oscfmt[match_fmt_pos][0] = (EEL_F)atof(msg);
+
+                  msg+=len;
+                }
+              }
+            break;
+            default:
+              if (toupper(fmtc) != toupper(msgc)) return 0.0;
+              fmt++;
+              msg++;
+            break;
+          }
+
+        }
+      }
+    }
+  }
+  return 0.0;
+}
+
+
+EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_device)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
   if (_this)
@@ -601,9 +775,10 @@ EEL_F * NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *des
         for (n=0;n<_this->m_out_devs.GetSize();n++)
           _this->m_out_devs.Get(n)->midiSend(msg,3);
       }
+      return 1.0;
     }
   }
-  return dest_device;
+  return 0.0;
 }
 
 
@@ -708,6 +883,7 @@ void scriptInstance::reloadScript(WDL_FastString &results)
               }
 
               struct sockaddr_in addr;
+              addr.sin_addr.s_addr=INADDR_ANY;
               addr.sin_family=AF_INET;
               if (buf[0] && buf[0] != '*') addr.sin_addr.s_addr = inet_addr(buf);
               if (addr.sin_addr.s_addr == INADDR_NONE) addr.sin_addr.s_addr = INADDR_ANY;
@@ -1050,13 +1226,19 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
               OSC_MAKEINTMEM4BE(&rd_sz);
               rd_pos += 20;
             }
-            while (rd_pos + rd_sz <= evt->sz)
+            while (rd_pos + rd_sz <= evt->sz && rd_sz>=0)
             {
               OscMessageRead rmsg((char*)evt->msg + rd_pos, rd_sz);
 
-              m_cur_oscmsg = &rmsg;
-              NSEEL_code_execute(m_code[3]);
-              m_cur_oscmsg = NULL;
+              const char *mstr = rmsg.GetMessage();
+              if (mstr && *mstr)
+              {
+                lstrcpyn_safe(g_last_oscmsg,mstr,sizeof(g_last_oscmsg));
+
+                m_cur_oscmsg = &rmsg;
+                NSEEL_code_execute(m_code[3]);
+                m_cur_oscmsg = NULL;
+              }
 
               rd_pos += rd_sz+4;
               if (rd_pos >= evt->sz) break;
@@ -1134,6 +1316,8 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         bool needUIupdate=false;
 
+        char last_oscmsg[1024];
+        lstrcpyn_safe(last_oscmsg,g_last_oscmsg,sizeof(last_oscmsg));
         double curtime = timeGetTime()/1000.0;
         for (x=0;x<g_scripts.GetSize();x++)
         {
@@ -1154,6 +1338,11 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
             s.AppendFormatted(64,"%02x:%02x:%02x ",(a>>16)&0xff,(a>>8)&0xff,a&0xff);
           }
           SetDlgItemText(hwndDlg,IDC_LASTMSG,s.Get());
+        }
+        if (strcmp(g_last_oscmsg,last_oscmsg))
+        {
+          lstrcpyn_safe(last_oscmsg,g_last_oscmsg,sizeof(g_last_oscmsg));
+          SetDlgItemText(hwndDlg,IDC_LASTMSG2,g_last_oscmsg);
         }
       }
     return 0;
@@ -1300,9 +1489,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   JNL::open_socketlib();
 
   NSEEL_init();
-  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm,(char *)_asm_generic3parm_end-(char *)_asm_generic3parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
-  NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm,(char *)_asm_generic1parm_end-(char *)_asm_generic1parm,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
-  // todo: oscmatch(), oscpop()
+  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
+  NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
+  NSEEL_addfunctionex("oscmatch",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
+  NSEEL_addfunctionex("oscpop",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_pop);
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
 
