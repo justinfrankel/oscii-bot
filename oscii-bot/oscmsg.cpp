@@ -91,12 +91,12 @@ OscMessageRead::OscMessageRead(char* buf, int len)
   }
 }
 
-const char* OscMessageRead::GetMessage()
+const char* OscMessageRead::GetMessage() const
 {
   return (m_msgok ? m_msg_ptr : "");  
 }
 
-int OscMessageRead::GetNumArgs()
+int OscMessageRead::GetNumArgs() const
 {
   if (!m_msgok) return 0;
   if (m_type_ptr >= m_type_end) return 0;
@@ -121,6 +121,38 @@ const char* OscMessageRead::PopWord()
   }   
   if (!*p) p=0;
   return p;
+}
+
+const void *OscMessageRead::GetIndexedArg(int idx, char *typeOut) const
+{
+  if (!m_msgok || idx<0) return 0;
+  const char *ptr = m_type_ptr;
+  const char *valptr = m_arg_ptr;
+  if (ptr >= m_type_end || valptr >= m_arg_end) return 0;
+
+  while (idx>0)
+  {
+    if (*ptr == 'i') valptr += sizeof(int);
+    else if (*ptr == 'f') valptr += sizeof(float);
+    else if (*ptr == 's') valptr += pad4(strlen(valptr));
+    else return 0;
+
+    idx--;
+    ptr++;
+    if (ptr >= m_type_end || valptr >= m_arg_end) return 0;
+  }
+
+  *typeOut = *ptr;
+
+  const char *endptr = valptr; 
+  if (*ptr == 'i') endptr += sizeof(int);
+  else if (*ptr == 'f') endptr += sizeof(float);
+  else if (*ptr == 's') endptr += pad4(strlen(valptr));
+  else return 0;
+
+  if (endptr > m_arg_end) return 0;
+
+  return valptr;
 }
 
 const int* OscMessageRead::PopIntArg(bool peek)

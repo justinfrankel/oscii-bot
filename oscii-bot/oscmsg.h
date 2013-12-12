@@ -54,10 +54,12 @@ public:
 
   OscMessageRead(char* buf, int len); // writes over buf
 
-  const char* GetMessage(); // get the entire message string, no args
-  int GetNumArgs();
+  const char* GetMessage() const; // get the entire message string, no args
+  int GetNumArgs() const;
 
   const char* PopWord();
+
+  const void *GetIndexedArg(int idx, char *typeOut) const; // offset from popped args, NULL if failed. typeOut required
 
   const int* PopIntArg(bool peek);
   const float* PopFloatArg(bool peek);

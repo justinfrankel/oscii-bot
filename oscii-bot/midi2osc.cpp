@@ -110,7 +110,7 @@ class scriptInstance
     NSEEL_VMCTX m_vm;
     NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
 
-    OscMessageRead *m_cur_oscmsg;
+    const OscMessageRead *m_cur_oscmsg;
   
 
     enum {
@@ -120,7 +120,7 @@ class scriptInstance
     };
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
-    static EEL_F NSEEL_CGEN_CALL _osc_pop(void *opaque, EEL_F *typeptr);
+    static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, EEL_F *fmt);
 };
 
@@ -635,36 +635,27 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
 }
 
 
-EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_pop(void *opaque, EEL_F *typeptr)
+EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
   *typeptr = 0.0;
   if (_this && _this->m_cur_oscmsg)
   {
-    const float *fptr=_this->m_cur_oscmsg->PopFloatArg(false);
-    if (fptr)
+    const int idx = (int) (*parmidx + 0.5);
+
+    char c=0;
+    const void *ptr=_this->m_cur_oscmsg->GetIndexedArg(idx&65535,&c);
+    if (!ptr) return 0.0;
+
+    *typeptr = (EEL_F)c;
+    if (c=='f') return (EEL_F) *(const float *)ptr;
+    if (c=='i') return (EEL_F) *(const int *)ptr;
+    if (c=='s') 
     {
-      *typeptr = (EEL_F)'f';
-      return *fptr;
-    }
-    const int *iptr=_this->m_cur_oscmsg->PopIntArg(false);
-    if (iptr)
-    {
-      *typeptr = (EEL_F)'i';
-      return (EEL_F)*iptr;
-    }
-    const char *s=_this->m_cur_oscmsg->PopStringArg(false);
-    if (s)
-    {
-      *typeptr = (EEL_F)'s';
-      int i=0;
-      int shift = 0;
-      while (*s && shift < 24)
-      {
-        i|=*s++ << shift;
-        shift += 8;
-      }
-      return (EEL_F)i;
+      const char *s=(const char *)ptr;
+      int idx2=(idx>>16)&1023;
+      while (idx2>0 && *s) { s++; idx2--; }
+      return (EEL_F)*s;
     }
   }
   return 0.0;
@@ -1554,7 +1545,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
   NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
   NSEEL_addfunctionex("oscmatch",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
-  NSEEL_addfunctionex("oscpop",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_pop);
+  NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
 
