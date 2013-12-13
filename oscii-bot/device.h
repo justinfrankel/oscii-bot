@@ -55,12 +55,12 @@ public:
 
   char *m_name_substr,*m_name_used;
   int m_skipcnt;
-  DWORD m_failed_time;
 
   midiOutputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in reuseDevList
   int m_last_dev_idx;
 
 #ifdef _WIN32
+  DWORD m_failed_time;
   HMIDIOUT m_handle;
   static void CALLBACK callbackFunc(
     HMIDIOUT hMidiIn,  
@@ -69,7 +69,11 @@ public:
     LPARAM dwParam1,   
     LPARAM dwParam2    
     ) { }
+#endif
 
+#ifdef __APPLE__
+  void *m_handle;
+  time_t m_failed_time;
 #endif
 
   void do_open(WDL_PtrList<outputDevice> *reuseDevList=NULL);
@@ -101,11 +105,16 @@ public:
 
   HMIDIIN m_handle;
   WDL_PtrList<MIDIHDR> m_longmsgs;
+  DWORD m_lastmsgtime;
+#endif
+
+#ifdef __APPLE__
+  void *m_handle;
+  time_t m_lastmsgtime;
 #endif
 
   char *m_name_substr,*m_name_used;
   int m_input_skipcnt;
-  DWORD m_lastmsgtime;
 
   midiInputDevice *m_open_would_use_altdev; // set during constructor if device already referenced in reuseDevList
   int m_last_dev_idx;

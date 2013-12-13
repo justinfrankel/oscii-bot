@@ -1,7 +1,12 @@
 // midi2osc v0.1
 // Copyright (C) 2013 Cockos Incorporated
 // License: GPL
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include "../WDL/swell/swell.h"
+#endif
+
 #include <ctype.h>
 #include <math.h>
 
@@ -553,16 +558,16 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
 
               if (ct == 'x' || ct == 'X' || ct == 'd' || ct == 'u')
               {
-                WDL_snprintf(op,64,fs,(int) (v+0.5));
+                snprintf(op,64,fs,(int) (v+0.5));
               }
               else if (ct == 'c')
               {
                 char c = (char) (int)(v+0.5);
                 if (!c) c=' ';
-                WDL_snprintf(op,64,fs,c);
+                snprintf(op,64,fs,c);
               }
               else
-                WDL_snprintf(op,64,fs,v);
+                snprintf(op,64,fs,v);
 
               while (*op) op++;
 
@@ -1333,6 +1338,8 @@ void load_all_scripts(WDL_FastString &results)
   }
 }
 
+HWND g_hwnd;
+
 WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
   static WDL_FastString results;
@@ -1340,18 +1347,32 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
   {
     case WM_INITDIALOG:
       // lParam = config file
+      g_hwnd=hwndDlg;
       {
+#ifdef _WIN32
         HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
         SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
         systray_add(hwndDlg, 0, (HICON)icon, "Cockos midi2osc");
+#endif
 
         SendMessage(hwndDlg,WM_COMMAND,IDC_BUTTON1,0);
         SetTimer(hwndDlg,1,10,NULL);
       }
     return 1;
     case WM_CLOSE:
-      ShowWindow(hwndDlg,SW_HIDE);
+#ifdef _WIN32
+       ShowWindow(hwndDlg,SW_HIDE);
+#else
+       DestroyWindow(hwndDlg);
+#endif
     return 1;
+    case WM_DESTROY:
+      g_hwnd=NULL;
+#ifndef _WIN32
+      SWELL_PostQuitMessage(0);
+#endif
+    break;
+
     case WM_TIMER:
       if (wParam == 1)
       {
@@ -1403,8 +1424,12 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
       switch (LOWORD(wParam))
       {
         case IDCANCEL:
+#ifdef _WIN32
           systray_del(hwndDlg,0);
           EndDialog(hwndDlg,1);
+#else
+          DestroyWindow(hwndDlg);
+#endif
         break;
         case IDC_BUTTON1:
           {
@@ -1415,6 +1440,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         break;
       }
     return 0;
+#ifdef _WIN32
     case WM_SYSTRAY:
       switch (LOWORD(lParam))
       {
@@ -1424,6 +1450,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
       }
     return 0;
+#endif
   }
   return 0;
 }
@@ -1445,8 +1472,25 @@ void load_scripts_for_path(const char *path)
     }
     while (!ds.Next());
   }
-
 }
+
+void initialize(const char *exepath)
+{
+  JNL::open_socketlib();
+
+  NSEEL_init();
+  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
+  NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
+  NSEEL_addfunctionex("oscmatch",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
+  NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
+
+ if (!g_scripts.GetSize()) load_scripts_for_path(exepath);
+}
+
+
+
+#ifdef _WIN32
+
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nShowCmd)
 {
   g_hInstance = hInstance;
@@ -1536,28 +1580,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     }
   }
 
-  if (!g_scripts.GetSize()) load_scripts_for_path(exepath);
+  initialize(exepath);
 
-
-  JNL::open_socketlib();
-
-  NSEEL_init();
-  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
-  NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
-  NSEEL_addfunctionex("oscmatch",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
-  NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
-
-  DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1),GetDesktopWindow(),mainProc);
+  DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1), GetDesktopWindow(), mainProc);
 
   g_inputs.Empty(true);
   g_outputs.Empty(true);
   g_scripts.Empty(true);
 
-
   ExitProcess(0);
+  
   return 0;
 }
-
 
 BOOL systray_add(HWND hwnd, UINT uID, HICON hIcon, LPSTR lpszTip)
 {
@@ -1579,3 +1613,51 @@ BOOL systray_del(HWND hwnd, UINT uID) {
   tnid.uID = uID;
   return(Shell_NotifyIcon(NIM_DELETE, &tnid));
 }
+#endif
+
+
+#ifndef _WIN32
+
+
+INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
+{
+  switch (msg)
+  {
+    case SWELLAPP_ONLOAD:
+      {
+        char exepath[2048];
+        exepath[0]=0;
+        GetModuleFileName(NULL,exepath,sizeof(exepath));
+        char *p=exepath;
+        while (*p) p++;
+        while (p >= exepath && *p != '/') p--; *++p=0;
+        MessageBox(NULL,exepath,"midi2osc",0);
+        initialize(exepath);
+      }
+    break;
+    case SWELLAPP_LOADED:
+      {
+        HWND h=CreateDialog(NULL,MAKEINTRESOURCE(IDD_DIALOG1),NULL,mainProc);
+        ShowWindow(h,SW_SHOW);
+      }
+    break;
+    case SWELLAPP_DESTROY:
+      if (g_hwnd) DestroyWindow(g_hwnd);
+      g_inputs.Empty(true);
+      g_outputs.Empty(true);
+      g_scripts.Empty(true);
+    break;
+  }
+  return 0;
+}
+
+
+
+#include "../WDL/swell/swell-dlggen.h"
+#include "res.rc_mac_dlg"
+#undef BEGIN
+#undef END
+#include "../WDL/swell/swell-menugen.h"
+#include "res.rc_mac_menu"
+
+#endif
