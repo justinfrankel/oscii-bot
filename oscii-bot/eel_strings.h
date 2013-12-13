@@ -1,11 +1,52 @@
 #ifndef __EEL__STRINGS_H__
 #define __EEL__STRINGS_H__
 
+// required for context
 // #define EEL_STRING_MAKESCOPE scriptInstance *_this = (scriptInstance*)opaque
 // #define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
 // #define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
 // #define EEL_STRING_ADDTOTABLE(x)  _this->m_strings.Add(strdup(x.Get()));
 // #define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+_this->m_strings.GetSize() - 1)
+
+
+
+/*
+
+   printf("string %d blah");                       -- output to log, allows %d %u %f etc, if host implements formats
+   strlen(str);                          -- returns string length
+   match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
+   strcpy(str, srcstr);                  -- replaces str with srcstr
+   strcat(str, srcstr);                  -- appends srcstr to str 
+   strncpy(str, srcstr, maxlen);         -- replaces str with srcstr, up to maxlen (-1 for unlimited)
+   strncat(str, srcstr, maxlen);         -- appends up to maxlen of srcstr to str (-1 for unlimited)
+   strcpy_from(str,srcstr, offset);      -- copies srcstr to str, but starts reading srcstr at offset offset
+   str_getchar(str, offset);             -- returns value at offset offset
+   str_setchar(str, offset, value);      -- sets value at offset offset
+   str_setlen(str, len);                 -- sets length of string (if increasing, will be space-padded)
+                                            (returns previous length)
+   str_delsub(str, pos, len);            -- deletes len chars at pos
+   str_insert(str, srcstr, pos);         -- inserts srcstr at pos
+
+
+also recommended, for the PHP fans:
+
+  m_builtin_code = NSEEL_code_compile_ex(m_vm,
+
+   "function strcpy_substr(dest, src, offset, maxlen) ("
+   "  offset < 0 ? offset=strlen(src)+offset;"
+   "  maxlen < 0 ? maxlen = strlen(src) - offset + maxlen;"
+   "  strcpy_from(dest, src, offset);"
+   "  maxlen > 0 && strlen(dest) > maxlen ? str_setlen(dest,maxlen);"
+   ");\n"
+
+
+  ,0,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS
+
+  );
+
+
+
+  */
 
 
 #ifndef EEL_STRING_MAXUSERSTRING_LENGTH_HINT
