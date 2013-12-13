@@ -33,10 +33,19 @@ class inputDevice {
     virtual void run(WDL_FastString &textOut)=0;
     virtual const char *get_type()=0;
 
-    void addinst(void (*callback)(void *d1, void *d2, char type, int msglen, void *msg), void *d1, void *d2)
+    virtual void addinst(void (*callback)(void *d1, void *d2, char type, int msglen, void *msg), void *d1, void *d2)
     {
       const rec r={callback,d1,d2};
       m_instances.Add(r);
+    }
+
+    virtual void onMessage(char type, const unsigned char *msg, int len)
+    {
+      int x;
+      const int n=m_instances.GetSize();
+      const rec *r = m_instances.Get();
+      for (x=0;x<n; x++)
+        if (r[x].callback) r[x].callback(r[x].data1,r[x].data2,type,len,(void*)msg);
     }
 };
 
@@ -72,7 +81,13 @@ public:
 #endif
 
 #ifdef __APPLE__
-  void *m_handle;
+#ifndef NO_DEFINE_APPLE_MIDI_REFS
+  typedef void *MIDIEndpointRef;
+  typedef void *MIDIPortRef;
+  struct MIDIPacketList;
+#endif
+  MIDIEndpointRef m_handle; 
+  MIDIPortRef m_port;
   time_t m_failed_time;
 #endif
 
@@ -109,8 +124,18 @@ public:
 #endif
 
 #ifdef __APPLE__
-  void *m_handle;
+#ifndef NO_DEFINE_APPLE_MIDI_REFS
+  typedef void *MIDIEndpointRef;
+  typedef void *MIDIPortRef;
+  struct MIDIPacketList;
+#endif
+  MIDIEndpointRef m_handle; 
+  MIDIPortRef m_port;
   time_t m_lastmsgtime;
+  bool m_running;
+  int m_curstatus;
+  void ProcessPacket(unsigned char *data, int length, int* laststatus);
+  static void MyReadProc(const MIDIPacketList *pktlist, void *refCon, void *connRefCon);
 #endif
 
   char *m_name_substr,*m_name_used;

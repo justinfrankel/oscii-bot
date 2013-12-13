@@ -1631,7 +1631,6 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
         char *p=exepath;
         while (*p) p++;
         while (p >= exepath && *p != '/') p--; *++p=0;
-        MessageBox(NULL,exepath,"midi2osc",0);
         initialize(exepath);
       }
     break;
