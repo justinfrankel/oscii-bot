@@ -2,7 +2,6 @@
 #define __EEL__STRINGS_H__
 
 // required for context
-// #define EEL_STRING_MAKESCOPE scriptInstance *_this = (scriptInstance*)opaque
 // #define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
 // #define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
 // #define EEL_STRING_ADDTOTABLE(x)  _this->m_strings.Add(strdup(x.Get()));
@@ -115,8 +114,6 @@ static int eel_validate_format_specifier(const char *fmt_in, char *typeOut)
 
 static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf_sz, int want_escapes)
 {
-  EEL_STRING_MAKESCOPE(opaque);
-
   bool rv=true;
   int fmt_parmpos = 0;
   char *op = buf;
@@ -223,11 +220,8 @@ static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf
 
 
 
-static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bool ignorecase)
+static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int match_fmt_pos, bool ignorecase)
 {
-  EEL_STRING_MAKESCOPE(opaque);
-
-  int match_fmt_pos=0;
   // check for match, updating EEL_STRING_GETFMTVAR(*) as necessary
   // %d=12345
   // %f=12345[.678]
@@ -237,30 +231,27 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
   // * ? +  match minimal groups of 0+,1, or 1+ chars
   for (;;)
   {
-    const char fmtc = *fmt;
-    const char msgc = *msg;
-    if (!fmtc || !msgc) return fmtc==msgc ? 1.0 : 0.0;
+    if (!*fmt && !*msg) return true;
 
-    switch (fmtc)
+    if (!*fmt) return false; // format ends before matching string
+
+    // if string ends and format is not on a wildcard, early-out to false
+    if (!*msg && *fmt != '*') return false;
+
+    switch (*fmt)
     {
       case '*':
       case '+':
-        {
-          const char *nc = ++fmt;
-          if (!*nc) return 1.0; // match!
+        // if last char of search pattern, we're done!
+        if (!fmt[1]) return *fmt == '*' || *msg;
 
-          int nc_len=0;
-          while (nc[nc_len] && 
-                 nc[nc_len] != '%' && 
-                 nc[nc_len] != '*' &&
-                 nc[nc_len] != '+' &&
-                 nc[nc_len] != '?') nc_len++;
-          if (!nc_len) continue;
+        if (fmt[0] == '+')  msg++; // skip a character for + . Note that in this case msg[0] is guaranteed not to be 0, because of the !*msg && *fmt != '*' check above
 
-          if (fmtc == '+') msg++; // require at least a single char to skip for +
+        fmt++;
 
-          while (*msg && strnicmp(msg,nc,nc_len)) msg++;
-        }
+        // maybe should do this greedily instead, searching from end of string? or optional...
+        while (*msg && !eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase)) msg++;
+        return !!*msg;
       break;
       case '?':
         fmt++;
@@ -269,21 +260,21 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
       case '%':
         {
           const char fmt_char = fmt[1];
-          fmt+=2;
+          if (!fmt_char) return false; // malformed
 
-          if (!fmt_char) return 0.0; // malformed
+          fmt+=2;
 
           if (fmt_char == '*' || 
               fmt_char == '?' || 
               fmt_char == '+' || 
               fmt_char == '%')
           {
-            if (msgc != fmt_char) return 0.0;
+            if (*msg != fmt_char) return false;
             msg++;
           }
           else if (fmt_char == 'c')
           {
-            if (!msg[0]) return 0.0;
+            if (!msg[0]) return false;
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
             if (varOut) *varOut = (EEL_F)msg[0];
             match_fmt_pos++;
@@ -293,7 +284,7 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
           {
             int len=0;
             while (msg[len] >= '0' && msg[len] <= '9') len++;
-            if (!len) return 0.0;
+            if (!len) return false;
 
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
             if (varOut)
@@ -315,7 +306,7 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
                    (msg[len] >= 'A' && msg[len] <= 'F') ||
                    (msg[len] >= 'a' && msg[len] <= 'f')
                    ) len++;
-            if (!len) return 0.0;
+            if (!len) return false;
 
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
             if (varOut)
@@ -335,7 +326,7 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
               len++; 
               while (msg[len] >= '0' && msg[len] <= '9') len++;
             }
-            if (!len) return 0.0;
+            if (!len) return false;
 
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
             if (varOut)
@@ -347,7 +338,7 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
         }
       break;
       default:
-        if (ignorecase ? (toupper(fmtc) != toupper(msgc)) : (fmtc != msgc)) return 0.0;
+        if (ignorecase ? (toupper(*fmt) != toupper(*msg)) : (*fmt!= *msg)) return false;
         fmt++;
         msg++;
       break;
@@ -359,7 +350,6 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bo
 
 static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -402,7 +392,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fm
 
 static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *maxlen)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -445,7 +434,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fm
 
 static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *offs)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -479,7 +467,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F 
 
 static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *maxlen)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -511,7 +498,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fm
 
 static EEL_F NSEEL_CGEN_CALL _eel_strncmp(void *opaque, EEL_F *aa, EEL_F *bb, EEL_F *maxlen)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     const char *a = EEL_STRING_GET_FOR_INDEX(*aa,NULL);
@@ -532,7 +518,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncmp(void *opaque, EEL_F *aa, EEL_F *bb, EE
 }
 static EEL_F NSEEL_CGEN_CALL _eel_strnicmp(void *opaque, EEL_F *aa, EEL_F *bb, EEL_F *maxlen)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     const char *a = EEL_STRING_GET_FOR_INDEX(*aa,NULL);
@@ -577,7 +562,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_stricmp(void *opaque, EEL_F *strOut, EEL_F *fm
 
 static EEL_F NSEEL_CGEN_CALL _eel_strgetchar(void *opaque, EEL_F *strOut, EEL_F *idx)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -599,7 +583,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strgetchar(void *opaque, EEL_F *strOut, EEL_F 
 
 static EEL_F NSEEL_CGEN_CALL _eel_strsetchar(void *opaque, EEL_F *strOut, EEL_F *idx, EEL_F *val)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -633,7 +616,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetchar(void *opaque, EEL_F *strOut, EEL_F 
 
 static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *pos)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -686,7 +668,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
 
 static EEL_F NSEEL_CGEN_CALL _eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *pos, EEL_F *len)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -717,7 +698,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *
 
 static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *newlen)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     EEL_STRING_STORAGECLASS *wr=NULL;
@@ -751,7 +731,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *
 
 static EEL_F NSEEL_CGEN_CALL _eel_strlen(void *opaque, EEL_F *fmt_index)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
@@ -768,7 +747,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strlen(void *opaque, EEL_F *fmt_index)
 
 static EEL_F NSEEL_CGEN_CALL _eel_printf(void *opaque, EEL_F *fmt_index)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
@@ -803,25 +781,23 @@ static EEL_F NSEEL_CGEN_CALL _eel_printf(void *opaque, EEL_F *fmt_index)
 
 static EEL_F NSEEL_CGEN_CALL _eel_match(void *opaque, EEL_F *fmt_index, EEL_F *value_index)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
     const char *msg = EEL_STRING_GET_FOR_INDEX(*value_index,NULL);
 
-    if (fmt && msg) return eel_string_match(opaque,fmt,msg,false);
+    if (fmt && msg) return eel_string_match(opaque,fmt,msg,0,false) ? 1.0 : 0.0;
   }
   return 0.0;
 }
 static EEL_F NSEEL_CGEN_CALL _eel_matchi(void *opaque, EEL_F *fmt_index, EEL_F *value_index)
 {
-  EEL_STRING_MAKESCOPE(opaque);
   if (opaque)
   {
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
     const char *msg = EEL_STRING_GET_FOR_INDEX(*value_index,NULL);
 
-    if (fmt && msg) return eel_string_match(opaque,fmt,msg,true);
+    if (fmt && msg) return eel_string_match(opaque,fmt,msg,0,true) ? 1.0 : 0.0;
   }
   return 0.0;
 }
@@ -856,8 +832,6 @@ void EEL_string_register()
 
 void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *rdptr)
 {
-  EEL_STRING_MAKESCOPE(opaque);
-
   WDL_FastString newstr;
   // preprocess to get strings from "", and replace with an index of someconstant+m_strings.GetSize()
   int comment_state=0; 
