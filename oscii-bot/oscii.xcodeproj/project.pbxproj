@@ -7,13 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3343A568185B72970026507E /* OSCII-bot.icns in Resources */ = {isa = PBXBuildFile; fileRef = 3343A567185B72970026507E /* OSCII-bot.icns */; };
 		3385932D185B555500FDFFEA /* wndsize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3385932C185B555500FDFFEA /* wndsize.cpp */; };
 		33AA3116185A7E8D001D767E /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 33AA3115185A7E8D001D767E /* Cocoa.framework */; };
 		33AA3120185A7E8D001D767E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 33AA311E185A7E8D001D767E /* InfoPlist.strings */; };
 		33AA3122185A7E8D001D767E /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 33AA3121185A7E8D001D767E /* main.m */; };
 		33AA3126185A7E8D001D767E /* Credits.rtf in Resources */ = {isa = PBXBuildFile; fileRef = 33AA3124185A7E8D001D767E /* Credits.rtf */; };
 		33AA312C185A7E8D001D767E /* MainMenu.xib in Resources */ = {isa = PBXBuildFile; fileRef = 33AA312A185A7E8D001D767E /* MainMenu.xib */; };
-		33AA312E185A7E8D001D767E /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 33AA312D185A7E8D001D767E /* Images.xcassets */; };
 		33AA3135185A7E8D001D767E /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 33AA3134185A7E8D001D767E /* XCTest.framework */; };
 		33AA3136185A7E8D001D767E /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 33AA3115185A7E8D001D767E /* Cocoa.framework */; };
 		33AA313E185A7E8D001D767E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 33AA313C185A7E8D001D767E /* InfoPlist.strings */; };
@@ -59,6 +59,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		3343A567185B72970026507E /* OSCII-bot.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = "OSCII-bot.icns"; sourceTree = "<group>"; };
 		3385932C185B555500FDFFEA /* wndsize.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = wndsize.cpp; path = ../../WDL/wingui/wndsize.cpp; sourceTree = "<group>"; };
 		33AA3112185A7E8D001D767E /* oscii.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = oscii.app; path = "OSCII-bot.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		33AA3115185A7E8D001D767E /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
@@ -71,7 +72,6 @@
 		33AA3123185A7E8D001D767E /* oscii-Prefix.pch */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "oscii-Prefix.pch"; sourceTree = "<group>"; };
 		33AA3125185A7E8D001D767E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.rtf; name = en; path = en.lproj/Credits.rtf; sourceTree = "<group>"; };
 		33AA312B185A7E8D001D767E /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.xib; name = Base; path = Base.lproj/MainMenu.xib; sourceTree = "<group>"; };
-		33AA312D185A7E8D001D767E /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Images.xcassets; sourceTree = "<group>"; };
 		33AA3133185A7E8D001D767E /* osciiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = osciiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		33AA3134185A7E8D001D767E /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 		33AA313B185A7E8D001D767E /* osciiTests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = "osciiTests-Info.plist"; sourceTree = "<group>"; };
@@ -180,7 +180,6 @@
 				33F96598185A82FE004C7070 /* oscmsg.cpp */,
 				33AA3149185A7EEC001D767E /* WDL */,
 				33AA312A185A7E8D001D767E /* MainMenu.xib */,
-				33AA312D185A7E8D001D767E /* Images.xcassets */,
 				33AA311C185A7E8D001D767E /* Supporting Files */,
 			);
 			path = oscii;
@@ -189,6 +188,7 @@
 		33AA311C185A7E8D001D767E /* Supporting Files */ = {
 			isa = PBXGroup;
 			children = (
+				3343A567185B72970026507E /* OSCII-bot.icns */,
 				33AA311D185A7E8D001D767E /* oscii-Info.plist */,
 				33AA311E185A7E8D001D767E /* InfoPlist.strings */,
 				33AA3121185A7E8D001D767E /* main.m */,
@@ -348,8 +348,8 @@
 			buildActionMask = 2147483647;
 			files = (
 				33AA3120185A7E8D001D767E /* InfoPlist.strings in Resources */,
-				33AA312E185A7E8D001D767E /* Images.xcassets in Resources */,
 				33AA3126185A7E8D001D767E /* Credits.rtf in Resources */,
+				3343A568185B72970026507E /* OSCII-bot.icns in Resources */,
 				33AA312C185A7E8D001D767E /* MainMenu.xib in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
