@@ -1,0 +1,31 @@
+@init
+
+last_t = time;
+
+framesize = 0.1;
+width = 78;
+pos = 0;
+lx = -10;
+
+@timer
+
+time >= last_t + framesize ? (
+
+  x = ((1+sin(pos))*0.5 * width)|0;
+  printf({ "|" });
+  lx >= -1 && lx!=x ? (
+    loop(min(x,lx), printf({" "}));
+    loop(abs(x-lx), printf({"*"}));
+    loop(width-max(x,lx), printf({" "}));
+  ) : (
+    loop(x, printf({" "}));
+    printf({"*"});
+    loop(width-1-x, printf({" "}));
+  );
+  lx=x;
+  printf({ "|\n" });
+  pos += 0.25 + sin(pos*0.32)*0.2;
+  
+  last_t += framesize;
+);
+

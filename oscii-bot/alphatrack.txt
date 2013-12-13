@@ -1,0 +1,52 @@
+// generic REAPER<-->alphatrack OSC, for REAPER's Default.ReaperOSC
+
+@input osc_in "OSC:*:9000"
+@output osc_out "OSC:localhost:8000"
+
+@output midi_out "MIDI:AlphaTrack"
+@input midi_in "MIDI:AlphaTrack"
+
+@init
+
+track_index = 1;
+
+track_voltab = 1024;
+
+@timer
+
+@oscmsg
+
+function set_vol_fader(vol) (
+  vol *= 16383;
+  msg1=0xe0;
+  msg2=vol&127;
+  msg3=vol/128;
+  midisend(midi_out);
+);
+
+oscmatch({/track/%d/*}) ? (
+  // fmt0 will have the affected track index
+
+
+  oscmatch({/track/%d/select}) ? (
+    oscparm(0,0)>0 ? (
+      track_index=fmt0;
+      set_vol_fader(track_voltab[fmt0]);
+    );
+  ) : oscmatch({/track/%d/volume}) ? (
+    track_voltab[fmt0] = oscparm(0,0);
+    fmt0 == track_index ? set_vol_fader(track_voltab[fmt0]);
+  );
+);
+
+
+@midimsg
+
+msg1 == 0xe0 ? (
+  vol = (msg2 + msg3*128) / 16383;
+  track_voltab[track_index] = vol;
+  fmt0 = track_index;
+  oscsend(osc_out,{ /track/%d/volume }, vol);
+  set_vol_fader(vol);
+);
+

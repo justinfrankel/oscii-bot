@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		3385932D185B555500FDFFEA /* wndsize.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 3385932C185B555500FDFFEA /* wndsize.cpp */; };
 		33AA3116185A7E8D001D767E /* Cocoa.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 33AA3115185A7E8D001D767E /* Cocoa.framework */; };
 		33AA3120185A7E8D001D767E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 33AA311E185A7E8D001D767E /* InfoPlist.strings */; };
 		33AA3122185A7E8D001D767E /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 33AA3121185A7E8D001D767E /* main.m */; };
@@ -58,7 +59,8 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		33AA3112185A7E8D001D767E /* oscii.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = oscii.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		3385932C185B555500FDFFEA /* wndsize.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = wndsize.cpp; path = ../../WDL/wingui/wndsize.cpp; sourceTree = "<group>"; };
+		33AA3112185A7E8D001D767E /* oscii.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = oscii.app; path = "OSCII-bot.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		33AA3115185A7E8D001D767E /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		33AA3118185A7E8D001D767E /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		33AA3119185A7E8D001D767E /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
@@ -217,6 +219,7 @@
 		33AA3149185A7EEC001D767E /* WDL */ = {
 			isa = PBXGroup;
 			children = (
+				3385932C185B555500FDFFEA /* wndsize.cpp */,
 				33F9659B185A83E5004C7070 /* eel2 */,
 				33F9658E185A82AC004C7070 /* jnetlib */,
 				33AA314A185A7EF4001D767E /* swell */,
@@ -376,6 +379,7 @@
 				33F9658A185A7F79004C7070 /* swell.cpp in Sources */,
 				33F965A8185A840D004C7070 /* nseel-eval.c in Sources */,
 				33F96584185A7F79004C7070 /* swell-ini.cpp in Sources */,
+				3385932D185B555500FDFFEA /* wndsize.cpp in Sources */,
 				33F96589185A7F79004C7070 /* swell-wnd.mm in Sources */,
 				33AA3122185A7E8D001D767E /* main.m in Sources */,
 				33F96582185A7F79004C7070 /* swell-dlg.mm in Sources */,

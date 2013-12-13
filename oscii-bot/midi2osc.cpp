@@ -143,7 +143,7 @@ class scriptInstance
         OUTPUT_INDEX_BASE=0x50000
     };
 
-    bool format_strings(const char *fmt, char *buf, int buf_sz, formatStringRec *rec, bool want_escapes);
+    bool format_strings(const char *fmt, char *buf, int buf_sz, formatStringRec *rec, int want_escapes);
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
@@ -194,9 +194,9 @@ public:
   {
     for (;;)
     {
-      char buf[MAX_OSC_MSG_LEN];
+      char buf[16384];
       buf[0]=0;
-      const int len=recvfrom(m_recvsock, buf, sizeof(buf), 0, 0, 0);
+      const int len=(int)recvfrom(m_recvsock, buf, sizeof(buf), 0, 0, 0);
       if (len<1) break;
 
       onMessage(1,(const unsigned char *)buf,len);
@@ -510,7 +510,7 @@ static int validate_format_specifier(const char *fmt_in, char *typeOut)
 
 
 
-bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, formatStringRec *rec, bool want_escapes)
+bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, formatStringRec *rec, int want_escapes)
 {
   bool rv=true;
   int fmt_parmpos = 0;
@@ -539,17 +539,17 @@ bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, form
 
       if (ct == 's' || ct=='S')
       {
-        const int idx = (int) (v+0.5);
+        const int idx = (int) (v);
         WDL_FastString *fmts = rec->values.Get(idx+1);
         lstrcpyn_safe(op,fmts ? fmts->Get() : "",100);
       }
       else if (ct == 'x' || ct == 'X' || ct == 'd' || ct == 'u')
       {
-        snprintf(op,64,fs,(int) (v+0.5));
+        snprintf(op,64,fs,(int) (v));
       }
       else if (ct == 'c')
       {
-        char c = (char) (int)(v+0.5);
+        char c = (char) (int)(v);
         if (!c) c=' ';
         snprintf(op,64,fs,c);
       }
@@ -565,8 +565,12 @@ bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, form
       if (want_escapes && fmt[0] == '\\')
       {
         if (fmt[1] == '\\') { *op++ = '\\'; fmt+=2; }
-        else if (fmt[1] == 'n' || fmt[1] == 'N')  { *op++ = '\n'; fmt+=2; }
-        else if (fmt[1] == 'r' || fmt[1] == 'R')  { *op++ = '\r'; fmt+=2; }
+        else if (fmt[1] == 'n' || fmt[1] == 'N')  
+        { 
+          if (want_escapes & 2) *op++ = '\r';
+          *op++ = '\n'; fmt+=2; 
+        }
+        else if (fmt[1] == 'r' || fmt[1] == 'R')  { if (!(want_escapes & 2)) *op++ = '\r'; fmt+=2; }
         else if (fmt[1] == 't' || fmt[1] == 't')  { *op++ = '\t'; fmt+=2; }
         else if (fmt[1] == 'x' || fmt[1]=='X' || (fmt[1] >= '0' && fmt[1] <= '9'))
         {
@@ -577,7 +581,7 @@ bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, form
 
           int c=0;
           char thisc=toupper(*fmt);
-          while (thisc >= '0' && thisc <= (base>=10 ? '9' : '7') ||
+          while ((thisc >= '0' && thisc <= (base>=10 ? '9' : '7')) ||
                  (base == 16 && thisc >= 'A' && thisc <= 'F')
                  )
           {
@@ -615,10 +619,9 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_printf(void *opaque, EEL_F *fmt_index)
     {
       const char *fmt = rec->values.Get(0)->Get();
       char buf[1024+128];
-      if (_this->format_strings(fmt,buf,sizeof(buf), rec, true))
+      if (_this->format_strings(fmt,buf,sizeof(buf), rec, 2))
       {
         _this->m_debugOut->Append(buf);
-        _this->m_debugOut->Append("\r\n");
         return 1.0;
       }
       else
@@ -655,7 +658,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
         if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
         char buf[1024+128];
-        if (_this->format_strings(fmt,buf,sizeof(buf), rec, false))
+        if (_this->format_strings(fmt,buf,sizeof(buf), rec, 0))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);
@@ -730,7 +733,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, EEL_F *parmidx, EE
   *typeptr = 0.0;
   if (_this && _this->m_cur_oscmsg)
   {
-    const int idx = (int) (*parmidx + 0.5);
+    const int idx = (int) (*parmidx);
 
     char c=0;
     const void *ptr=_this->m_cur_oscmsg->GetIndexedArg(idx&65535,&c);
@@ -860,7 +863,6 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
                 else if (fmt_char == 'f')
                 {
                   int len=0;
-                  bool haddot=false;
                   while (msg[len] >= '0' && msg[len] <= '9') len++;
                   if (msg[len] == '.') 
                   { 
@@ -906,9 +908,9 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
     {
       unsigned char msg[3];
       EEL_F **vms = _this->m_var_msgs;
-      msg[0] = vms[0] ? (int) (vms[0][0]+0.5) : 0;
-      msg[1] = vms[1] ? (int) (vms[1][0]+0.5) : 0;
-      msg[2] = vms[2] ? (int) (vms[2][0]+0.5) : 0;
+      msg[0] = vms[0] ? (int) (vms[0][0]) : 0;
+      msg[1] = vms[1] ? (int) (vms[1][0]) : 0;
+      msg[2] = vms[2] ? (int) (vms[2][0]) : 0;
 
       if (output)
       {
@@ -1465,7 +1467,9 @@ void load_all_scripts(WDL_FastString &results)
 
   results.AppendFormatted(512,"Total: %d scripts, %d inputs, %d outputs\r\n", g_scripts.GetSize(), g_inputs.GetSize(),g_outputs.GetSize());
 
-  results.Append("\r\n===========================================================================\r\n");
+  results.Append("\r\n");
+  for (x=0;x<80;x++) results.Append("=");
+  results.Append("\r\n");
 
 
   for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->start(results);
@@ -1499,13 +1503,30 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
       g_last_wndpos.right = GetPrivateProfileInt("oscii-bot", "wnd_w",0,g_ini_file.Get());
       g_last_wndpos.bottom = GetPrivateProfileInt("oscii-bot", "wnd_h",0,g_ini_file.Get());
 
+      {
+        HFONT font = CreateFont(10, 0, 0, 0, FW_NORMAL, 0, 0, 0, ANSI_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, DEFAULT_PITCH, "Courier New");
+        if (font) SendDlgItemMessage(hwndDlg,IDC_EDIT1,WM_SETFONT,(WPARAM)font,0);
+      }
+
+
       if (g_last_wndpos.right > 0 && g_last_wndpos.bottom != 0)
       {
         g_last_wndpos.right += g_last_wndpos.left;
         g_last_wndpos.bottom += g_last_wndpos.top;
         SetWindowPos(hwndDlg,NULL,g_last_wndpos.left,g_last_wndpos.top,g_last_wndpos.right-g_last_wndpos.left,g_last_wndpos.bottom-g_last_wndpos.top,SWP_NOZORDER|SWP_NOACTIVATE);
       }
-
+#ifdef __APPLE__
+      ShowWindow(GetDlgItem(hwndDlg,IDCANCEL),SW_HIDE);
+      {
+        WDL_WndSizer__rec *r1=resize.get_item(IDCANCEL);
+        WDL_WndSizer__rec *r2=resize.get_item(IDC_LASTMSG);
+        if (r2 && r1)
+        {
+          r2->orig.left = r1->orig.left;
+          resize.onResize();
+        }
+      }
+#endif
 
       {
 #ifdef _WIN32
@@ -1822,8 +1843,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
       MessageBox(NULL,
         "Usage:\r\n"
-        "OSCII [scriptfilename.txt ...] [-dir scriptwithtxtfiles]\r\n\r\n"
-        "If no script files specified, default will be all txt files in AppData/Roaming/OSCII-bot/","Usage",MB_OK);
+        "OSCII-bot [scriptfilename.txt ...] [-dir scriptwithtxtfiles]\r\n\r\n"
+        "If no script files or paths specified, default will be all txt files in AppData/Roaming/OSCII-bot/","Usage",MB_OK);
       return 0;
     }
   }
@@ -1884,10 +1905,51 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
         char *p=exepath;
         while (*p) p++;
         while (p >= exepath && *p != '/') p--; *++p=0;
-
-        // todo:g_argv, g_argc, ~/Library/Application Support/OSCII-bot etc
-
-        initialize(exepath);
+        
+        if (exepath[0])
+          g_default_script_path.Set(exepath,strlen(exepath)-1);
+        
+        FILE *fp=NULL;
+        if (g_default_script_path.Get()[0])
+        {
+          g_ini_file.Set(g_default_script_path.Get());
+          g_ini_file.Append("/oscii-bot.ini");
+          fp = fopen(g_ini_file.Get(),"r");
+        }
+        if (!fp)
+        {
+          char *p=getenv("HOME");
+          if (p && *p)
+          {
+            g_default_script_path.Set(p);
+            g_default_script_path.Append("/Library/Application Support/OSCII-bot");
+            mkdir(g_default_script_path.Get(),0777);
+            g_ini_file.Set(g_default_script_path.Get());
+            g_ini_file.Append("/oscii-bot.ini");
+          }
+        }
+        else
+        {
+          fclose(fp);
+        }
+        
+        if (g_argc && g_argv)
+        {
+          int x;
+          int state=0;
+          for(x=1;x<g_argc;x++)
+          {
+            OnCommandLineParameter(g_argv[x],state);
+          }
+          if (state)
+          {
+            printf(
+            "Usage:\n"
+            "%s [scriptfilename.txt ...] [-dir scriptwithtxtfiles]\n\n"
+            "If no script files specified, default will be all txt files in ~/Library/Application Support/OSCII-bot",g_argv[0]);
+          }
+        }
+        initialize();
       }
     break;
     case SWELLAPP_LOADED:

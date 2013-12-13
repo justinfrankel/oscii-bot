@@ -67,8 +67,8 @@ void midiInputDevice::ProcessPacket(unsigned char *data, int length, int* lastst
     {
       if (status == 0xF8 || status == 0xFA || status == 0xFB || status == 0xFC) // only these 1 byte messages get added
       {
-        const unsigned char msg[3] = { status,0,0};
-        onMessage(0,msg,3);
+        const unsigned char m[3] = { status,0,0};
+        onMessage(0,m,3);
       }
       bytesused=1;
     }
@@ -92,15 +92,15 @@ void midiInputDevice::ProcessPacket(unsigned char *data, int length, int* lastst
       if (status == 0xF3 || status == 0xF1 || (status&0xF0) == 0xC0 || (status&0xF0) == 0xD0) // two-byte messages
       {
         if (msgavail < 1) break;
-        const unsigned char msg[3] = { status,msg[0],0};
-        onMessage(0,msg,3);
+        const unsigned char m[3] = { status,msg[0],0};
+        onMessage(0,m,3);
         ++bytesused;
       }
       else
       {
         if (msgavail < 2) break;
-        const unsigned char msg[3] = { status,msg[0],msg[1]};
-        onMessage(0,msg,3);
+        const unsigned char m[3] = { status,msg[0],msg[1]};
+        onMessage(0,m,3);
         bytesused += 2;
       }
       
@@ -229,55 +229,20 @@ void midiInputDevice::run(WDL_FastString &textOut)
   if (now > m_lastmsgtime+5) // every 5s of inactivity, query status
   {
     m_lastmsgtime = now;
-//    MIDIINCAPS caps;
-    if (0) //!m_handle || midiInGetDevCaps((UINT)m_handle,&caps,sizeof(caps))!=MMSYSERR_NOERROR)
+    if (!m_handle)
     {
       const bool had_handle=!!m_handle;
       do_close();
       do_open();
       if (m_handle) 
       {
-        textOut.AppendFormatted(1024,"***** Reopened MIDI input device %s\r\n",m_name_used);
+        textOut.AppendFormatted(1024,"***** Opened MIDI input device %s\r\n",m_name_used);
         start();
       }
       else if (had_handle) textOut.AppendFormatted(1024,"**** Closed MIDI input device %s\r\n",m_name_used);
     }
   }
 }
-
-/*
-void CALLBACK midiInputDevice::callbackFunc(
-  HMIDIIN hMidiIn,  
-  UINT wMsg,        
-  LPARAM dwInstance, 
-  LPARAM dwParam1,   
-  LPARAM dwParam2    
-)
-{
-  midiInputDevice *_this = (midiInputDevice*)dwInstance;
-  if (wMsg == MIM_DATA )
-  {
-    if (_this) 
-    {
-      const unsigned char msg[3] = {
-        (unsigned char)(dwParam1&0xff),
-        (unsigned char)((dwParam1>>8)&0xff),
-        (unsigned char)((dwParam1>>16)&0xff)
-      };
-
-      _this->m_lastmsgtime = GetTickCount();
-
-      int x;
-      const int n=_this->m_instances.GetSize();
-      const rec *r = _this->m_instances.Get();
-      for (x=0;x<n; x++)
-        if (r[x].callback) r[x].callback(r[x].data1,r[x].data2,0,3,(void*)msg);
-    }
-  }
-}
-*/
-
-
 
 
 
@@ -389,7 +354,7 @@ void midiOutputDevice::run(WDL_FastString &textOut)
     // try to reopen
     const bool had_handle = !!m_handle;
     do_open();
-    if (m_handle) textOut.AppendFormatted(1024,"***** Reopened MIDI output device %s\r\n",m_name_used);
+    if (m_handle) textOut.AppendFormatted(1024,"***** Opened MIDI output device %s\r\n",m_name_used);
     else if (had_handle) textOut.AppendFormatted(1024,"***** Lost MIDI output device %s\r\n",m_name_used);
 
   }

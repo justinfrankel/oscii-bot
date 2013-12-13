@@ -82,8 +82,8 @@ public:
 
 #ifdef __APPLE__
 #ifndef NO_DEFINE_APPLE_MIDI_REFS
-  typedef void *MIDIEndpointRef;
-  typedef void *MIDIPortRef;
+  typedef int MIDIEndpointRef;
+  typedef int MIDIPortRef;
   struct MIDIPacketList;
 #endif
   MIDIEndpointRef m_handle; 
@@ -125,8 +125,8 @@ public:
 
 #ifdef __APPLE__
 #ifndef NO_DEFINE_APPLE_MIDI_REFS
-  typedef void *MIDIEndpointRef;
-  typedef void *MIDIPortRef;
+  typedef int MIDIEndpointRef; // these are UInt32
+  typedef int MIDIPortRef;
   struct MIDIPacketList;
 #endif
   MIDIEndpointRef m_handle; 
