@@ -373,19 +373,24 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
           else if (rdptr[1] == '*') state=2;
         }
 
-        if (*rdptr == '{')
+        if (*rdptr == '{' || *rdptr == '"')
         {
           // scan tokens and replace with (idx)
           formatStringRec *r = new formatStringRec;
-          rdptr++; // skip '{'
+
+          const bool ismultiple = *rdptr == '{';
+          if (ismultiple) rdptr++; // skip '{'
 
           while (*rdptr && *rdptr != '}')
           {
-            while (*rdptr == ' ' || *rdptr == '\t' || *rdptr == '\r' || *rdptr == '\n') rdptr++;
-            if (*rdptr == '}') break;
+            if (ismultiple)
+            {
+              while (*rdptr == ' ' || *rdptr == '\t' || *rdptr == '\r' || *rdptr == '\n') rdptr++;
+              if (*rdptr == '}') break;
+            }
             const char *tokstart = rdptr;
-            const bool hasq = *tokstart == '\"';
-            if (hasq) 
+            const bool hasq = !ismultiple || *tokstart == '"';
+            if (hasq)
             {
               rdptr++; 
               tokstart++;
@@ -399,7 +404,12 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
                   {
                     esc_state=1;
                   }
-                  else if (*rdptr == '"') break;
+                  else if (*rdptr == '"')
+                  {
+                    if (rdptr[1] != '"') break;
+                    // "" converts to "
+                    rdptr++;
+                  }
                 }
                 else 
                 {
@@ -415,14 +425,14 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
             }
             else
             {
+              //ismultiple is always true
               while (*rdptr && *rdptr != ' ' && *rdptr != '\r' && *rdptr != '\n' && *rdptr != '\t' && *rdptr != '}') rdptr++;
               if (rdptr > tokstart)
               {
                 r->values.Add(new WDL_FastString(tokstart,rdptr-tokstart));
               }
             }
-           
-
+            if (!ismultiple) break;          
           }
 
           if (!r->values.GetSize())
@@ -432,7 +442,7 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
 
           procOut.AppendFormatted(128,"(%d)",FORMAT_INDEX_BASE+m_formats.GetSize());
           m_formats.Add(r);
-          if (*rdptr) rdptr++;
+          if (*rdptr && ismultiple) rdptr++;
 
           continue;
         }

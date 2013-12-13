@@ -12,18 +12,18 @@ lx = -10;
 time >= last_t + framesize ? (
 
   x = ((1+sin(pos))*0.5 * width)|0;
-  printf({ "|" });
+  printf("|");
   lx >= -1 && lx!=x ? (
-    loop(min(x,lx), printf({" "}));
-    loop(abs(x-lx), printf({"*"}));
-    loop(width-max(x,lx), printf({" "}));
+    loop(min(x,lx), printf(" "));
+    loop(abs(x-lx), printf("*"));
+    loop(width-max(x,lx), printf(" "));
   ) : (
-    loop(x, printf({" "}));
-    printf({"*"});
-    loop(width-1-x, printf({" "}));
+    loop(x, printf(" "));
+    printf("*");
+    loop(width-1-x, printf(" "));
   );
   lx=x;
-  printf({ "|\n" });
+  printf("|\n");
   pos += 0.25 + sin(pos*0.32)*0.2;
   
   last_t += framesize;
