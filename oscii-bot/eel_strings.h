@@ -243,15 +243,34 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
       case '*':
       case '+':
         // if last char of search pattern, we're done!
-        if (!fmt[1]) return *fmt == '*' || *msg;
+        if (!fmt[1] || (fmt[1] == '?' && !fmt[2])) return *fmt == '*' || *msg;
 
-        if (fmt[0] == '+')  msg++; // skip a character for + . Note that in this case msg[0] is guaranteed not to be 0, because of the !*msg && *fmt != '*' check above
+        if (fmt[0] == '+')  msg++; // skip a character for + . Note that in this case msg[1] is valid, because of the !*msg && *fmt != '*' check above
 
         fmt++;
+        if (*fmt == '?')
+        {
+          // *? or +? are lazy matches
+          fmt++;
 
-        // maybe should do this greedily like %s is, but for now we let %s be greedier than * and +
-        while (*msg && !eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase)) msg++;
-        return !!*msg;
+          while (*msg && !eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase)) msg++;
+          return !!*msg;
+        }
+        else
+        {
+          // greedy match
+          const char *oldmsg = msg;
+          while (*msg) msg++;
+          while (--msg >= oldmsg)
+          {
+            if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
+            {
+              return true;
+            }
+          }
+          return false;
+        }
+
       break;
       case '?':
         fmt++;
