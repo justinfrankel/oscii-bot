@@ -67,7 +67,7 @@ class scriptInstance
       m_debugOut=0;
       m_in_devs.Empty();
       m_out_devs.Empty();
-      m_formats.Empty(true);
+      m_strings.Empty(true,free);
       int x;
       for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
       {
@@ -117,16 +117,7 @@ class scriptInstance
     WDL_HeapBuf m_incoming_events;  // incomingEvent list, each is 8-byte aligned
     WDL_Mutex m_incoming_events_mutex;
 
-    class formatStringRec
-    {
-      public:
-        formatStringRec() { }
-        ~formatStringRec() { values.Empty(true); }
-
-        WDL_PtrList<WDL_FastString> values; // first is mandatory, following are optional
-    };
-
-    WDL_PtrList<formatStringRec> m_formats;
+    WDL_PtrList<char> m_strings;
 
     enum { MAX_OSC_FMTS=32 };
 
@@ -138,12 +129,12 @@ class scriptInstance
   
 
     enum {
-        FORMAT_INDEX_BASE=0x10000,
-        INPUT_INDEX_BASE =0x40000,
-        OUTPUT_INDEX_BASE=0x50000
+        STRING_INDEX_BASE=0x100000,
+        INPUT_INDEX_BASE =0x400000,
+        OUTPUT_INDEX_BASE=0x500000
     };
 
-    bool format_strings(const char *fmt, char *buf, int buf_sz, formatStringRec *rec, int want_escapes);
+    bool format_strings(const char *fmt, char *buf, int buf_sz, int want_escapes, const WDL_PtrList<char> *stringTab);
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
@@ -356,8 +347,9 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
 
 
   WDL_FastString procOut;
+  WDL_FastString newstr;
   const char *rdptr = curblock.Get();
-  // preprocess to get formats from { }, and replace with an index of FORMAT_INDEX_BASE+m_formats.GetSize()
+  // preprocess to get strings from "", and replace with an index of STRING_INDEX_BASE+m_strings.GetSize()
   int state=0; 
   // states:
   // 1 = comment to end of line
@@ -373,76 +365,43 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
           else if (rdptr[1] == '*') state=2;
         }
 
-        if (*rdptr == '{' || *rdptr == '"')
+        if (*rdptr == '"')
         {
           // scan tokens and replace with (idx)
-          formatStringRec *r = new formatStringRec;
+          newstr.Set("");
 
-          const bool ismultiple = *rdptr == '{';
-          if (ismultiple) rdptr++; // skip '{'
+          rdptr++; 
 
-          while (*rdptr && *rdptr != '}')
+          int esc_state=0;
+          while (*rdptr)
           {
-            if (ismultiple)
+            if (esc_state==0)
             {
-              while (*rdptr == ' ' || *rdptr == '\t' || *rdptr == '\r' || *rdptr == '\n') rdptr++;
-              if (*rdptr == '}') break;
-            }
-            const char *tokstart = rdptr;
-            const bool hasq = !ismultiple || *tokstart == '"';
-            if (hasq)
-            {
-              rdptr++; 
-              tokstart++;
-              int esc_state=0;
-              WDL_FastString *val = new WDL_FastString;
-              while (*rdptr)
+              if (*rdptr == '\\') 
               {
-                if (esc_state==0)
-                {
-                  if (*rdptr == '\\') 
-                  {
-                    esc_state=1;
-                  }
-                  else if (*rdptr == '"')
-                  {
-                    if (rdptr[1] != '"') break;
-                    // "" converts to "
-                    rdptr++;
-                  }
-                }
-                else 
-                {
-                  if (*rdptr != '"') val->Append("\\",1);
-                  esc_state=0;
-                }
-
-                if (!esc_state) val->Append(rdptr,1);
+                esc_state=1;
+              }
+              else if (*rdptr == '"')
+              {
+                if (rdptr[1] != '"') break;
+                // "" converts to "
                 rdptr++;
               }
-              r->values.Add(val);
-              if (*rdptr) rdptr++; // skip trailing quote
             }
-            else
+            else 
             {
-              //ismultiple is always true
-              while (*rdptr && *rdptr != ' ' && *rdptr != '\r' && *rdptr != '\n' && *rdptr != '\t' && *rdptr != '}') rdptr++;
-              if (rdptr > tokstart)
-              {
-                r->values.Add(new WDL_FastString(tokstart,rdptr-tokstart));
-              }
+              if (*rdptr != '"') newstr.Append("\\",1);
+              esc_state=0;
             }
-            if (!ismultiple) break;          
+
+            if (!esc_state) newstr.Append(rdptr,1);
+            rdptr++;
           }
 
-          if (!r->values.GetSize())
-          {
-            results.AppendFormatted(1024,"\tWarning: in %s: { } specified with no strings\r\n",g_code_names[parsestate]);
-          }
+          if (*rdptr) rdptr++; // skip trailing quote
 
-          procOut.AppendFormatted(128,"(%d)",FORMAT_INDEX_BASE+m_formats.GetSize());
-          m_formats.Add(r);
-          if (*rdptr && ismultiple) rdptr++;
+          procOut.AppendFormatted(128,"(%d)",STRING_INDEX_BASE+m_strings.GetSize());
+          m_strings.Add(strdup(newstr.Get()));
 
           continue;
         }
@@ -520,7 +479,7 @@ static int validate_format_specifier(const char *fmt_in, char *typeOut)
 
 
 
-bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, formatStringRec *rec, int want_escapes)
+bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, int want_escapes, const WDL_PtrList<char> *stringTab)
 {
   bool rv=true;
   int fmt_parmpos = 0;
@@ -549,9 +508,8 @@ bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, form
 
       if (ct == 's' || ct=='S')
       {
-        const int idx = (int) (v);
-        WDL_FastString *fmts = rec->values.Get(idx+1);
-        lstrcpyn_safe(op,fmts ? fmts->Get() : "",100);
+        const char *str = stringTab ? stringTab->Get((int) (v+0.5) - STRING_INDEX_BASE) : NULL;
+        lstrcpyn_safe(op,str ? str : "",100);
       }
       else if (ct == 'x' || ct == 'X' || ct == 'd' || ct == 'u')
       {
@@ -624,12 +582,11 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_printf(void *opaque, EEL_F *fmt_index)
   scriptInstance *_this = (scriptInstance*)opaque;
   if (_this && _this->m_debugOut)
   {
-    formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
-    if (rec && rec->values.GetSize())
+    const char *fmt = _this->m_strings.Get((int) (*fmt_index + 0.5) - STRING_INDEX_BASE );
+    if (fmt)
     {
-      const char *fmt = rec->values.Get(0)->Get();
       char buf[1024+128];
-      if (_this->format_strings(fmt,buf,sizeof(buf), rec, 2))
+      if (_this->format_strings(fmt,buf,sizeof(buf), 2, &_this->m_strings))
       {
         _this->m_debugOut->Append(buf);
         return 1.0;
@@ -660,15 +617,14 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
     }
     if (output || output_idx == -1 || output_idx==-100)
     {
-      formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
-      if (rec && rec->values.GetSize())
+      const char *fmt = _this->m_strings.Get((int) (*fmt_index + 0.5) - STRING_INDEX_BASE );
+      if (fmt)
       {
-        const char *fmt = rec->values.Get(0)->Get();
         char fmt_type = 0;
         if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
         char buf[1024+128];
-        if (_this->format_strings(fmt,buf,sizeof(buf), rec, 0))
+        if (_this->format_strings(fmt,buf,sizeof(buf), 0, &_this->m_strings))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);
@@ -677,10 +633,10 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
           else if (fmt_type =='i') wr.PushIntArg((int) (*value));
           else if (fmt_type == 's')
           {
-            int idx=(int) (*value);
-            if (idx>=0 && idx < rec->values.GetSize()-1)
+            const char *strval = _this->m_strings.Get((int) (*value + 0.5) - STRING_INDEX_BASE );
+            if (strval)
             {
-              wr.PushStringArg(rec->values.Get(idx+1)->Get());
+              wr.PushStringArg(strval);
             }
             else
             {
@@ -767,14 +723,12 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
   scriptInstance *_this = (scriptInstance*)opaque;
   if (_this && _this->m_cur_oscmsg)
   {
-    formatStringRec *rec = _this->m_formats.Get((int) (*fmt_index + 0.5) - FORMAT_INDEX_BASE );
-    if (rec && rec->values.GetSize())
+    const char *fmt = _this->m_strings.Get((int) (*fmt_index + 0.5) - STRING_INDEX_BASE );
+    if (fmt)
     {
-      WDL_FastString *fstr = rec->values.Get(0);
       const char *msg = _this->m_cur_oscmsg->GetMessage();
-      if (msg && fstr)
+      if (msg)
       {
-        const char *fmt=fstr->Get();
         int match_fmt_pos=0;
         // check for match, updating m_var_fmt[*] as necessary
         // %d=12345
@@ -1294,8 +1248,8 @@ void scriptInstance::load_script(WDL_FastString &results)
   if (!m_in_devs.GetSize()) results.Append("\tWarning: No @input specified\r\n");
   if (!m_out_devs.GetSize()) results.Append("\tWarning: No @output specified\r\n");
 
-  results.AppendFormatted(512,"\t%d inputs, %d outputs, %d formats\r\n\r\n",
-      m_in_devs.GetSize(),m_out_devs.GetSize(),m_formats.GetSize());
+  results.AppendFormatted(512,"\t%d inputs, %d outputs, %d strings\r\n\r\n",
+      m_in_devs.GetSize(),m_out_devs.GetSize(),m_strings.GetSize());
 
 }
 
