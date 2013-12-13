@@ -169,20 +169,27 @@ static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf
     {
       if (want_escapes && fmt[0] == '\\')
       {
-        if (fmt[1] == '\\') { *op++ = '\\'; fmt+=2; }
-        else if (fmt[1] == 'n' || fmt[1] == 'N')  
+        const char nc = toupper(fmt[1]);
+        if (nc == '\\') { *op++ = '\\'; fmt+=2; }
+        else if (nc == 'N')  
         { 
+          // (want_escapes & 2) means autoconvert \n to \r\n
           if (want_escapes & 2) *op++ = '\r';
           *op++ = '\n'; fmt+=2; 
         }
-        else if (fmt[1] == 'r' || fmt[1] == 'R')  { if (!(want_escapes & 2)) *op++ = '\r'; fmt+=2; }
-        else if (fmt[1] == 't' || fmt[1] == 't')  { *op++ = '\t'; fmt+=2; }
-        else if (fmt[1] == 'x' || fmt[1]=='X' || (fmt[1] >= '0' && fmt[1] <= '9'))
+        else if (nc == 'R')  
+        { 
+          // if autoconverting \n to \r\n, filter \r if it is followed by \n
+          if (!(want_escapes & 2) || fmt[2] != '\\' || toupper(fmt[3]) != 'N') *op++ = '\r'; 
+          fmt+=2; 
+        }
+        else if (nc == 'T')  { *op++ = '\t'; fmt+=2; }
+        else if (nc=='X' || (nc >= '0' && nc <= '9'))
         {
           int base = 10;
           fmt++;
-          if (fmt[0] == 'x' || fmt[0] == 'X') { fmt++; base=16; }
-          else if (fmt[0] == '0') base=8;
+          if (nc == 'X') { fmt++; base=16; }
+          else if (nc == '0') base=8;
 
           int c=0;
           char thisc=toupper(*fmt);

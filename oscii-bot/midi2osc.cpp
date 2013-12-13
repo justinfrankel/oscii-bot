@@ -37,6 +37,7 @@ BOOL systray_del(HWND hwnd, UINT uID);
 
 int g_recent_events[4];
 const char *g_code_names[4] = { "@init", "@timer", "@midimsg", "@oscmsg" };
+bool g_force_results_update;
 
 HWND g_hwnd;
 RECT g_last_wndpos;
@@ -100,6 +101,30 @@ class scriptInstance
         m_debugOut = &results;
         NSEEL_code_execute(m_code[0]);
         m_debugOut = NULL;
+      }
+    }
+
+    void WriteOutput(const char *buf)
+    {
+      int buflen=strlen(buf);
+      if (m_debugOut && buflen>0)
+      {
+
+        if (!strcmp(buf, "<!CLS>")) 
+          m_debugOut->Set("");
+        else
+        {
+          const int oldlen = m_debugOut->GetLength() ;
+          const char *str = m_debugOut->Get();
+          if (oldlen>0 && str[oldlen-1] == '\r') // chintzy terminal emulation
+          {
+            const char *p= str+ oldlen-2;
+            while (p >= str && *p != '\n') p--;
+            m_debugOut->SetLen(p-str + 1);
+          }
+          m_debugOut->Append(buf); 
+        }
+        g_force_results_update=true;
       }
     }
 
@@ -190,7 +215,7 @@ class scriptInstance
 #define EEL_STRING_ADDTOTABLE(x)  _this->m_strings.Add(strdup(x.Get()));
 #define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+_this->m_strings.GetSize() - 1)
 #define EEL_STRING_DEBUGOUT (_this->m_debugOut)
-#define EEL_STRING_STDOUT_WRITE(x) { if (_this->m_debugOut) _this->m_debugOut->Append(x); }
+#define EEL_STRING_STDOUT_WRITE(x) _this->WriteOutput(x) 
 
 #include "eel_strings.h"
 
@@ -1279,8 +1304,9 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run(results);  // send queued messages
 
-        if (results.GetLength() != asz)
+        if (results.GetLength() != asz||g_force_results_update)
         {
+          g_force_results_update=false;
           if (results.GetLength() > 20000)
           {
             char *buf = (char *)results.Get();
