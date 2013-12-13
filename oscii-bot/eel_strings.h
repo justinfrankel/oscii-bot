@@ -16,8 +16,13 @@
    printf("string %d blah");             -- output to log, allows %d %u %f etc, if host implements formats
    strlen(str);                          -- returns string length
    match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
+   matchi("*test*", "this is a test")    -- search for first parameter regex-style in second parameter (case insensitive)
    strcpy(str, srcstr);                  -- replaces str with srcstr
    strcat(str, srcstr);                  -- appends srcstr to str 
+   strcmp(str, str2)                     -- compares strings
+   stricmp(str, str2)                    -- compares strings (ignoring case)
+   strncmp(str, str2, maxlen)            -- compares strings up to maxlen bytes
+   strnicmp(str, str2, maxlen)           -- compares strings (ignoring case) up to maxlen bytes
    strncpy(str, srcstr, maxlen);         -- replaces str with srcstr, up to maxlen (-1 for unlimited)
    strncat(str, srcstr, maxlen);         -- appends up to maxlen of srcstr to str (-1 for unlimited)
    strcpy_from(str,srcstr, offset);      -- copies srcstr to str, but starts reading srcstr at offset offset
@@ -211,7 +216,7 @@ static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf
 
 
 
-static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg)
+static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg, bool ignorecase)
 {
   EEL_STRING_MAKESCOPE(opaque);
 
@@ -335,7 +340,7 @@ static EEL_F eel_string_match(void *opaque, const char *fmt, const char *msg)
         }
       break;
       default:
-        if (toupper(fmtc) != toupper(msgc)) return 0.0;
+        if (ignorecase ? (toupper(fmtc) != toupper(msgc)) : (fmtc != msgc)) return 0.0;
         fmt++;
         msg++;
       break;
@@ -496,6 +501,51 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fm
   return 0.0;
 }
 
+
+static EEL_F NSEEL_CGEN_CALL _eel_strncmp(void *opaque, EEL_F *aa, EEL_F *bb, EEL_F *maxlen)
+{
+  EEL_STRING_MAKESCOPE(opaque);
+  if (opaque)
+  {
+    const char *a = EEL_STRING_GET_FOR_INDEX(*aa,NULL);
+    const char *b = EEL_STRING_GET_FOR_INDEX(*bb, NULL);
+    if (!a || !b)
+    {
+#ifdef EEL_STRING_DEBUGOUT
+      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scmp: bad specifier(s) passed %f/%f\n",maxlen ? "n" : "",*aa,*bb);
+#endif
+    }
+    else
+    {
+      int ml = maxlen ? (int) *maxlen : -1;
+      return ml >=0 ? (EEL_F)strncmp(a,b,ml) : (EEL_F) strcmp(a,b);
+    }
+  }
+  return -1.0;
+}
+static EEL_F NSEEL_CGEN_CALL _eel_strnicmp(void *opaque, EEL_F *aa, EEL_F *bb, EEL_F *maxlen)
+{
+  EEL_STRING_MAKESCOPE(opaque);
+  if (opaque)
+  {
+    const char *a = EEL_STRING_GET_FOR_INDEX(*aa,NULL);
+    const char *b = EEL_STRING_GET_FOR_INDEX(*bb, NULL);
+    if (!a || !b)
+    {
+#ifdef EEL_STRING_DEBUGOUT
+      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%sicmp: bad specifier(s) passed %f/%f\n",maxlen ? "n" : "",*aa,*bb);
+#endif
+    }
+    else
+    {
+      int ml = maxlen ? (int) *maxlen : -1;
+      return ml >=0 ? (EEL_F)strnicmp(a,b,ml) : (EEL_F) stricmp(a,b);
+    }
+  }
+  return -1.0;
+}
+
+
 static EEL_F NSEEL_CGEN_CALL _eel_strcat(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
 {
   return _eel_strncat(opaque,strOut,fmt_index,NULL);
@@ -504,6 +554,17 @@ static EEL_F NSEEL_CGEN_CALL _eel_strcat(void *opaque, EEL_F *strOut, EEL_F *fmt
 static EEL_F NSEEL_CGEN_CALL _eel_strcpy(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
 {
   return _eel_strncpy(opaque,strOut,fmt_index,NULL);
+}
+
+
+static EEL_F NSEEL_CGEN_CALL _eel_strcmp(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
+{
+  return _eel_strncmp(opaque,strOut,fmt_index,NULL);
+}
+
+static EEL_F NSEEL_CGEN_CALL _eel_stricmp(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
+{
+  return _eel_strnicmp(opaque,strOut,fmt_index,NULL);
 }
 
 
@@ -709,8 +770,8 @@ static EEL_F NSEEL_CGEN_CALL _eel_printf(void *opaque, EEL_F *fmt_index)
       char buf[4096];
       if (eel_format_strings(opaque,fmt,buf,sizeof(buf), 2))
       {
-#ifdef EEL_STRING_STDOUT
-        if (EEL_STRING_STDOUT) EEL_STRING_STDOUT->Append(buf);
+#ifdef EEL_STRING_STDOUT_WRITE
+        EEL_STRING_STDOUT_WRITE(buf);
 #endif
         return 1.0;
       }
@@ -741,7 +802,19 @@ static EEL_F NSEEL_CGEN_CALL _eel_match(void *opaque, EEL_F *fmt_index, EEL_F *v
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
     const char *msg = EEL_STRING_GET_FOR_INDEX(*value_index,NULL);
 
-    if (fmt && msg) return eel_string_match(opaque,fmt,msg);
+    if (fmt && msg) return eel_string_match(opaque,fmt,msg,false);
+  }
+  return 0.0;
+}
+static EEL_F NSEEL_CGEN_CALL _eel_matchi(void *opaque, EEL_F *fmt_index, EEL_F *value_index)
+{
+  EEL_STRING_MAKESCOPE(opaque);
+  if (opaque)
+  {
+    const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
+    const char *msg = EEL_STRING_GET_FOR_INDEX(*value_index,NULL);
+
+    if (fmt && msg) return eel_string_match(opaque,fmt,msg,true);
   }
   return 0.0;
 }
@@ -753,9 +826,13 @@ void EEL_string_register()
 
   NSEEL_addfunctionex("strcat",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strcat);
   NSEEL_addfunctionex("strcpy",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strcpy);
+  NSEEL_addfunctionex("strcmp",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strcmp);
+  NSEEL_addfunctionex("stricmp",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_stricmp);
 
   NSEEL_addfunctionex("strncat",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strncat);
   NSEEL_addfunctionex("strncpy",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strncpy);
+  NSEEL_addfunctionex("strncmp",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strncmp);
+  NSEEL_addfunctionex("strnicmp",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strnicmp);
   NSEEL_addfunctionex("str_getchar",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strgetchar);
   NSEEL_addfunctionex("str_setlen",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strsetlen);
   NSEEL_addfunctionex("strcpy_from",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&_eel_strcpyfrom);
@@ -766,6 +843,7 @@ void EEL_string_register()
   NSEEL_addfunctionex("printf",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&_eel_printf);
 
   NSEEL_addfunctionex("match",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_match);
+  NSEEL_addfunctionex("matchi",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&_eel_matchi);
 
 }
 

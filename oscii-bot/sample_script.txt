@@ -26,7 +26,7 @@
 
 // special variables:
 //   time        -- system timestamp (seconds, millisecond precision)
-//   fmt0..fmt31 -- format variables for oscsend(), oscmatch(), and printf()
+//   fmt0..fmt31 -- format variables for oscsend(), oscmatch(), sprintf(), match(), matchi(), and printf()
 //   msg1..msg3  -- three bytes of MIDI, used by midisend() and set for each @midimsg call
 //   msgdev      -- device index of incoming MIDI message, set by @midimsg
 //   oscstr      -- only valid during @oscmsg, has string to OSC format
@@ -41,7 +41,7 @@
 //   oscmatch("/format");                            -- /format matched. supports wildcards (* + and ?), and 
 //                                                       %d/%f/%u/%X etc, updating fmt0..fmt31. 
 //                                                       returns 1 if full match, otherwise 0. fmt* may be updated
-//                                                       this is an alias of match(parm,oscstr)
+//                                                       this is an alias of matchi(parm,oscstr)
 //   midisend(device_index);                         -- sends msg1/msg2/msg3 to device_index. device_index can be
 //                                                       -1 for all MIDI outputs, or -100 for all MIDI outputs in all
 //                                                       scripts (dangerous!)
@@ -51,10 +51,15 @@
 //   sprintf(dest,"string %d blah");       -- format, output to dest (user string, 0..1023), returns length
 //   strlen(str);                          -- returns string length
 //   match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
+//   matchi("*test*", "this is a test")    -- search for first parameter regex-style in second parameter (case insensitive)
 //   strcpy(str, srcstr);                  -- replaces str with srcstr
 //   strcat(str, srcstr);                  -- appends srcstr to str 
 //   strncpy(str, srcstr, maxlen);         -- replaces str with srcstr, up to maxlen (-1 for unlimited)
 //   strncat(str, srcstr, maxlen);         -- appends up to maxlen of srcstr to str (-1 for unlimited)
+//   strcmp(str, str2)                     -- compares strings
+//   stricmp(str, str2)                    -- compares strings (ignoring case)
+//   strncmp(str, str2, maxlen)            -- compares strings up to maxlen bytes
+//   strnicmp(str, str2, maxlen)           -- compares strings (ignoring case) up to maxlen bytes
 //   strcpy_from(str,srcstr, offset);      -- copies srcstr to str, but starts reading srcstr at offset offset
 //   str_getchar(str, offset);             -- returns value at offset offset
 //   str_setchar(str, offset, value);      -- sets value at offset offset

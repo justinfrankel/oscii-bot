@@ -186,12 +186,12 @@ class scriptInstance
 
 #define EEL_STRING_MAKESCOPE(opaque) scriptInstance *_this = (scriptInstance*)(opaque)
 #define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
-
 #define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
 #define EEL_STRING_ADDTOTABLE(x)  _this->m_strings.Add(strdup(x.Get()));
 #define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+_this->m_strings.GetSize() - 1)
 #define EEL_STRING_DEBUGOUT (_this->m_debugOut)
-#define EEL_STRING_STDOUT (_this->m_debugOut)
+#define EEL_STRING_STDOUT_WRITE(x) { if (_this->m_debugOut) _this->m_debugOut->Append(x); }
+
 #include "eel_strings.h"
 
 
@@ -537,7 +537,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
     {
       const char *msg = _this->m_cur_oscmsg->GetMessage();
 
-      if (msg) return eel_string_match(opaque,fmt,msg);
+      if (msg) return eel_string_match(opaque,fmt,msg,true);
     }
   }
   return 0.0;
