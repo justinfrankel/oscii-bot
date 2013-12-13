@@ -174,14 +174,10 @@ public:
     {
       char buf[MAX_OSC_MSG_LEN];
       buf[0]=0;
-      int len=recvfrom(m_recvsock, buf, sizeof(buf), 0, 0, 0);
+      const int len=recvfrom(m_recvsock, buf, sizeof(buf), 0, 0, 0);
       if (len<1) break;
 
-      int x;
-      const int n=m_instances.GetSize();
-      const rec *r = m_instances.Get();
-      for (x=0;x<n; x++)
-        if (r[x].callback) r[x].callback(r[x].data1,r[x].data2,1,len,(void*)buf);
+      onMessage(1,(const unsigned char *)buf,len);
     }
   }
 
