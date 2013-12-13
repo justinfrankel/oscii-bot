@@ -63,7 +63,7 @@ class scriptInstance
     {
       clear();
       int x;
-      for (x=0;x<MAX_USER_STRINGS;x++) delete m_rw_strings[x];
+      for (x=0;x<EEL_STRING_MAX_USER_STRINGS;x++) delete m_rw_strings[x];
     }
 
     void load_script(WDL_FastString &results);
@@ -74,7 +74,7 @@ class scriptInstance
       m_out_devs.Empty();
       m_strings.Empty(true,free);
       int x;
-      for (x=0;x<MAX_USER_STRINGS;x++) if (m_rw_strings[x]) m_rw_strings[x]->Set("");
+      for (x=0;x<EEL_STRING_MAX_USER_STRINGS;x++) if (m_rw_strings[x]) m_rw_strings[x]->Set("");
 
       if (m_builtin_code) NSEEL_code_free(m_builtin_code);
       m_builtin_code = NULL;
@@ -127,22 +127,18 @@ class scriptInstance
     WDL_Mutex m_incoming_events_mutex;
 
     enum { 
-      MAX_USER_STRINGS=1024, 
+      EEL_STRING_MAX_USER_STRINGS=1024, 
       OSC_CURMSG_STRING=7317
     };
     
-    enum 
-    {
-      MAX_USER_STRING_LENGTH_HINT = 16384 // not a hard limit, but tries to not grow when its over this length
-    };
-    WDL_FastString *m_rw_strings[MAX_USER_STRINGS];
+    WDL_FastString *m_rw_strings[EEL_STRING_MAX_USER_STRINGS];
 
     WDL_PtrList<char> m_strings;
     
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)
     {
       int idx = (int) (val+0.5);
-      if (idx>=0 && idx < MAX_USER_STRINGS)
+      if (idx>=0 && idx < EEL_STRING_MAX_USER_STRINGS)
       {
         if (isWriteableAs)
         {
@@ -162,6 +158,12 @@ class scriptInstance
 
     enum { MAX_OSC_FMTS=32 };
 
+    EEL_F *GetVarForFormat(int formatidx)
+    {
+      if (formatidx>=0 && formatidx<MAX_OSC_FMTS) return m_var_fmt[formatidx];
+      return NULL;
+    }
+
     EEL_F *m_var_time, *m_var_msgs[5], *m_var_fmt[MAX_OSC_FMTS];
     NSEEL_VMCTX m_vm;
     NSEEL_CODEHANDLE m_builtin_code;
@@ -176,30 +178,21 @@ class scriptInstance
         OUTPUT_INDEX_BASE=0x500000
     };
 
-    bool format_strings(const char *fmt, char *buf, int buf_sz, int want_escapes);
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, EEL_F *fmt);
-
-    static EEL_F NSEEL_CGEN_CALL _eel_match(void *opaque, EEL_F *fmt, EEL_F *str);
-    static EEL_F NSEEL_CGEN_CALL _eel_printf(void *opaque, EEL_F *fmt);
-    static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fmt);
-    static EEL_F NSEEL_CGEN_CALL _eel_strlen(void *opaque, EEL_F *fmt);
-
-    static EEL_F NSEEL_CGEN_CALL _eel_strcat(void *opaque, EEL_F *strOut, EEL_F *fmt);
-    static EEL_F NSEEL_CGEN_CALL _eel_strcpy(void *opaque, EEL_F *strOut, EEL_F *fmt);
-    static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F *fmt, EEL_F *offs);
-    static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fmt, EEL_F *maxlen);
-    static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fmt, EEL_F *maxlen);
-    static EEL_F NSEEL_CGEN_CALL _eel_strgetchar(void *opaque, EEL_F *strOut, EEL_F *idx);
-    static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *newlen);
-    static EEL_F NSEEL_CGEN_CALL _eel_strsetchar(void *opaque, EEL_F *strOut, EEL_F *idx, EEL_F *val);
-    static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *src, EEL_F *pos);
-    static EEL_F NSEEL_CGEN_CALL _eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *pos, EEL_F *len);
-
-    double do_match(const char *fmt, const char *msg);
 };
+
+#define EEL_STRING_MAKESCOPE(opaque) scriptInstance *_this = (scriptInstance*)(opaque)
+#define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
+
+#define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
+#define EEL_STRING_ADDTOTABLE(x)  _this->m_strings.Add(strdup(x.Get()));
+#define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+_this->m_strings.GetSize() - 1)
+#define EEL_STRING_DEBUGOUT (_this->m_debugOut)
+#define EEL_STRING_STDOUT (_this->m_debugOut)
+#include "eel_strings.h"
 
 
 WDL_PtrList<scriptInstance> g_scripts;
@@ -406,82 +399,7 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
 
 
   WDL_FastString procOut;
-  WDL_FastString newstr;
-  const char *rdptr = curblock.Get();
-  // preprocess to get strings from "", and replace with an index of STRING_INDEX_BASE+m_strings.GetSize()
-  int comment_state=0; 
-  // states:
-  // 1 = comment to end of line
-  // 2=comment til */
-  while (*rdptr)
-  {
-    const char tc = *rdptr;
-    switch (comment_state)
-    {
-      case 0:
-        if (tc == '/')
-        {
-          if (rdptr[1] == '/') comment_state=1;
-          else if (rdptr[1] == '*') comment_state=2;
-        }
-
-
-        if (tc == '"')
-        {
-          // scan tokens and replace with (idx)
-          newstr.Set("");
-
-          rdptr++; 
-
-          int esc_state=0;
-          while (*rdptr)
-          {
-            if (esc_state==0)
-            {
-              if (*rdptr == '\\') 
-              {
-                esc_state=1;
-              }
-              else if (*rdptr == '"')
-              {
-                if (rdptr[1] != '"') break;
-                // "" converts to "
-                rdptr++;
-              }
-            }
-            else 
-            {
-              if (*rdptr != '"') newstr.Append("\\",1);
-              esc_state=0;
-            }
-
-            if (!esc_state) newstr.Append(rdptr,1);
-            rdptr++;
-          }
-
-          if (*rdptr) rdptr++; // skip trailing quote
-
-          procOut.AppendFormatted(128,"(%d)",STRING_INDEX_BASE+m_strings.GetSize());
-          m_strings.Add(strdup(newstr.Get()));
-        }
-        else
-          procOut.Append(rdptr++,1);
-
-      break;
-      case 1:
-        if (tc == '\n') comment_state=0;
-        procOut.Append(rdptr++,1);
-      break;
-      case 2:
-        if (tc == '*' && rdptr[1] == '/') 
-        {
-          procOut.Append(rdptr++,1);
-          comment_state=0;
-        }
-        procOut.Append(rdptr++,1);
-      break;
-    }
-  }
+  eel_preprocess_strings(this,procOut, curblock.Get());
 
   m_code[parsestate]=NSEEL_code_compile_ex(m_vm,procOut.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);  
 
@@ -491,495 +409,6 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
     results.AppendFormatted(1024,"\tError: in %s: %s\r\n",g_code_names[parsestate], err);
   }
 }
-
-static int validate_format_specifier(const char *fmt_in, char *typeOut)
-{
-  const char *fmt = fmt_in+1;
-  int state=0;
-  if (fmt_in[0] != '%') return 0; // ugh passed a non-specifier
-  while (*fmt)
-  {
-    const char c = *fmt++;
-    if (c == 'f'|| c=='e' || c=='E' || c=='g' || c=='G' || c == 'd' || c == 'u' || c == 'x' || c == 'X' || c == 'c' || c =='s' || c=='S') 
-    {     
-      if (typeOut) *typeOut = c;
-      return fmt - fmt_in;
-    }
-    else if (c == '.') 
-    {
-      if (state&2) break;
-      state |= 2;
-    }
-    else if (c == '+') 
-    {
-      if (state&(32|16|8|4)) break;
-      state |= 8;
-    }
-    else if (c == '-') 
-    {
-      if (state&(32|16|8|4)) break;
-      state |= 16;
-    }
-    else if (c == ' ') 
-    {
-      if (state&(32|16|8|4)) break;
-      state |= 32;
-    }
-    else if (c >= '0' && c <= '9') 
-    {
-      state|=4;
-    }
-    else 
-    {
-      break; // %unknown-char
-    }
-  }
-  return 0;
-
-}
-
-
-
-bool scriptInstance::format_strings(const char *fmt, char *buf, int buf_sz, int want_escapes)
-{
-  bool rv=true;
-  int fmt_parmpos = 0;
-  char *op = buf;
-  while (*fmt && op < buf+buf_sz-128)
-  {
-    if (fmt[0] == '%' && fmt[1] == '%') 
-    {
-      *op++ = '%';
-      fmt+=2;
-    }
-    else if (fmt[0] == '%')
-    {
-      char ct=0;
-      const int l=validate_format_specifier(fmt,&ct);
-      char fs[128];
-      if (!l || !ct || l >= sizeof(fs)) 
-      {
-        rv=false;
-        break;
-      }
-      lstrcpyn(fs,fmt,l+1);
-
-      const double v = fmt_parmpos < MAX_OSC_FMTS && m_var_fmt[fmt_parmpos] ? m_var_fmt[fmt_parmpos][0] : 0.0;
-      fmt_parmpos++;
-
-      if (ct == 's' || ct=='S')
-      {
-        const char *str = GetStringForIndex(v);
-        snprintf(op,(buf+buf_sz - 3 - op),fs,str ? str : "");
-      }
-      else if (ct == 'x' || ct == 'X' || ct == 'd' || ct == 'u')
-      {
-        snprintf(op,64,fs,(int) (v));
-      }
-      else if (ct == 'c')
-      {
-        char c = (char) (int)(v);
-        if (!c) c=' ';
-        snprintf(op,64,fs,c);
-      }
-      else
-        snprintf(op,64,fs,v);
-
-      while (*op) op++;
-
-      fmt += l;
-    }
-    else 
-    {
-      if (want_escapes && fmt[0] == '\\')
-      {
-        if (fmt[1] == '\\') { *op++ = '\\'; fmt+=2; }
-        else if (fmt[1] == 'n' || fmt[1] == 'N')  
-        { 
-          if (want_escapes & 2) *op++ = '\r';
-          *op++ = '\n'; fmt+=2; 
-        }
-        else if (fmt[1] == 'r' || fmt[1] == 'R')  { if (!(want_escapes & 2)) *op++ = '\r'; fmt+=2; }
-        else if (fmt[1] == 't' || fmt[1] == 't')  { *op++ = '\t'; fmt+=2; }
-        else if (fmt[1] == 'x' || fmt[1]=='X' || (fmt[1] >= '0' && fmt[1] <= '9'))
-        {
-          int base = 10;
-          fmt++;
-          if (fmt[0] == 'x' || fmt[0] == 'X') { fmt++; base=16; }
-          else if (fmt[0] == '0') base=8;
-
-          int c=0;
-          char thisc=toupper(*fmt);
-          while ((thisc >= '0' && thisc <= (base>=10 ? '9' : '7')) ||
-                 (base == 16 && thisc >= 'A' && thisc <= 'F')
-                 )
-          {
-            c *= base;
-            if (thisc >= 'A' && thisc <= 'F')
-              c+=thisc - 'A' + 10;
-            else
-              c += thisc - '0';
-
-            fmt++;
-            thisc=toupper(*fmt);
-          }
-          *op++ = (char)c;
-        }
-        else *op++ = *fmt++;
-      }
-      else
-      {
-        *op++ = *fmt++;
-      }
-    }
-
-  }
-  *op=0;
-  return rv;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"sprintf: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      const char *fmt = _this->GetStringForIndex(*fmt_index);
-      if (fmt)
-      {
-        char buf[8192];
-        if (_this->format_strings(fmt,buf,sizeof(buf), 2))
-        {
-          wr->Set(buf);
-          return wr->GetLength();
-        }
-        else
-        {
-          if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"sprintf: bad format string %s\n",fmt);
-        }
-      }
-      else
-      {
-        if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"sprintf: bad format specifier passed %f\n",*fmt_index);
-      }
-    }
-  }
-  return 0.0;
-}
-
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *maxlen)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str%scat: bad destination specifier passed %f\n",maxlen ? "n":"",*strOut);
-    }
-    else
-    {
-      const char *fmt = _this->GetStringForIndex(*fmt_index);
-      if (fmt)
-      {
-        if (wr->GetLength() > MAX_USER_STRING_LENGTH_HINT)
-        {
-          if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str%scat: will not grow string since it is already %d bytes\n",maxlen ? "n":"",wr->GetLength());
-        }
-        else
-        {
-          int ml=-1;
-          if (maxlen && *maxlen >= 0) ml = (int)*maxlen;
-          wr->Append(fmt, ml);
-          return wr->GetLength();
-        }
-      }
-      else
-      {
-        if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str%scat: bad format specifier passed %f\n",maxlen ? "n":"",*fmt_index);
-      }
-    }
-  }
-  return 0.0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *offs)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"strcpy_from: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      const char *fmt = _this->GetStringForIndex(*fmt_index);
-      if (fmt)
-      {
-        int o = (int) *offs;
-        if (o < 0) o=0;
-        if (o >= (int)strlen(fmt)) wr->Set("");
-        else wr->Set(fmt+o);
-
-        return wr->GetLength();
-      }
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"strcpy_from: bad format specifier passed %f\n",*fmt_index);
-    }
-  }
-  return 0.0;
-}
-
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *maxlen)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str%scpy: bad destination specifier passed %f\n",maxlen ? "n":"",*strOut);
-    }
-    else
-    {
-      const char *fmt = _this->GetStringForIndex(*fmt_index);
-      if (fmt)
-      {
-        int ml=-1;
-        if (maxlen && *maxlen >= 0) ml = (int)*maxlen;
-        wr->Set(fmt,ml);
-        return wr->GetLength();
-      }
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str%scpy: bad format specifier passed %f\n",maxlen ? "n":"",*fmt_index);
-    }
-  }
-  return 0.0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strcat(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
-{
-  return _eel_strncat(opaque,strOut,fmt_index,NULL);
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strcpy(void *opaque, EEL_F *strOut, EEL_F *fmt_index)
-{
-  return _eel_strncpy(opaque,strOut,fmt_index,NULL);
-}
-
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strgetchar(void *opaque, EEL_F *strOut, EEL_F *idx)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_getchar: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      int l = (int) *idx;
-      if (l >= 0 && l < wr->GetLength()) return wr->Get()[l];
-    }
-  }
-  return 0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strsetchar(void *opaque, EEL_F *strOut, EEL_F *idx, EEL_F *val)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_setchar: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      int l = (int) *idx;
-      int v = (int) *val;
-      v &= 255;
-      if (l >= 0 && l < wr->GetLength()) 
-      {
-        if (!v) 
-        {
-          wr->SetLen(l);
-        }
-        else
-        {
-          ((char *)wr->Get())[l]=v;
-        }
-      }
-    }
-  }
-  return 0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *pos)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_insert: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      const char *fmt = _this->GetStringForIndex(*fmt_index);
-      if (fmt)
-      {
-        int p = (int)*pos;
-        if (p < 0) 
-        {
-          if ((-p) >= strlen(fmt)) return 0.0;
-
-          fmt += -p;
-          p=0;
-        }
-        int insert_l = strlen(fmt);
-
-        if (insert_l>0)
-        {
-          if (wr->GetLength() > MAX_USER_STRING_LENGTH_HINT)
-          {
-            if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_insert: will not grow string since it is already %d bytes\n",wr->GetLength());
-          }
-          wr->Insert(fmt,p);
-
-          return insert_l;
-        }
-      }
-      else
-      {
-        if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_insert: bad source specifier passed %f\n",*fmt_index);
-      }
-    }
-  }
-  return 0.0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *pos, EEL_F *len)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_delsub: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      int p=(int)*pos;
-      int l=(int)*len;
-      if (p<0)
-      {
-        l+=p;
-        p=0;
-      }
-      if (l>0)
-        wr->DeleteSub(p,l);
-
-      return wr->GetLength();
-    }
-  }
-  return -1.0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *newlen)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    WDL_FastString *wr=NULL;
-    _this->GetStringForIndex(*strOut, &wr);
-    if (!wr)
-    {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"str_setlen: bad destination specifier passed %f\n",*strOut);
-    }
-    else
-    {
-      int oldlen = wr->GetLength();
-      int l = (int) *newlen;
-      if (l < 0) l=0;
-      if (l > MAX_USER_STRING_LENGTH_HINT)
-      {
-        _this->m_debugOut->AppendFormatted(512,"str_setlen: clamping requested length of %d to %d\n",l,MAX_USER_STRING_LENGTH_HINT);
-        l=MAX_USER_STRING_LENGTH_HINT;
-      }
-      wr->SetLen(l);
-
-      return oldlen;
-    }
-  }
-  return -1.0;
-}
-
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_strlen(void *opaque, EEL_F *fmt_index)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    const char *fmt = _this->GetStringForIndex(*fmt_index);
-    if (fmt)
-    {
-      return strlen(fmt);
-    }
-  }
-  return 0.0;
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_printf(void *opaque, EEL_F *fmt_index)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this && _this->m_debugOut)
-  {
-    const char *fmt = _this->GetStringForIndex(*fmt_index);
-    if (fmt)
-    {
-      char buf[1024+128];
-      if (_this->format_strings(fmt,buf,sizeof(buf), 2))
-      {
-        _this->m_debugOut->Append(buf);
-        return 1.0;
-      }
-      else
-      {
-        _this->m_debugOut->AppendFormatted(512,"printf: bad format string %s\n",fmt);
-      }
-    }
-    else
-    {
-      _this->m_debugOut->AppendFormatted(512,"printf: bad format specifier passed %f\n",*fmt_index);
-    }
-  }
-  return 0.0;
-}
-
-
-
 
 EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
 {
@@ -1001,7 +430,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
         if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
         char buf[1024+128];
-        if (_this->format_strings(fmt,buf,sizeof(buf), 0))
+        if (eel_format_strings(opaque,fmt,buf,sizeof(buf), 0))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);
@@ -1096,143 +525,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, EEL_F *parmidx, EE
   return 0.0;
 }
 
-double scriptInstance::do_match(const char *fmt, const char *msg)
-{
-  int match_fmt_pos=0;
-  // check for match, updating m_var_fmt[*] as necessary
-  // %d=12345
-  // %f=12345[.678]
-  // %c=any nonzero char, ascii value
-  // %x=12354ab
-  // %*, %?, %+, %% literals
-  // * ? +  match minimal groups of 0+,1, or 1+ chars
-  for (;;)
-  {
-    const char fmtc = *fmt;
-    const char msgc = *msg;
-    if (!fmtc || !msgc) return fmtc==msgc ? 1.0 : 0.0;
 
-    switch (fmtc)
-    {
-      case '*':
-      case '+':
-        {
-          const char *nc = ++fmt;
-          if (!*nc) return 1.0; // match!
-
-          int nc_len=0;
-          while (nc[nc_len] && 
-                 nc[nc_len] != '%' && 
-                 nc[nc_len] != '*' &&
-                 nc[nc_len] != '+' &&
-                 nc[nc_len] != '?') nc_len++;
-          if (!nc_len) continue;
-
-          if (fmtc == '+') msg++; // require at least a single char to skip for +
-
-          while (*msg && strnicmp(msg,nc,nc_len)) msg++;
-        }
-      break;
-      case '?':
-        fmt++;
-        msg++;
-      break;
-      case '%':
-        {
-          const char fmt_char = fmt[1];
-          fmt+=2;
-
-          if (!fmt_char) return 0.0; // malformed
-
-          if (fmt_char == '*' || 
-              fmt_char == '?' || 
-              fmt_char == '+' || 
-              fmt_char == '%')
-          {
-            if (msgc != fmt_char) return 0.0;
-            msg++;
-          }
-          else if (fmt_char == 'c')
-          {
-            if (!msg[0]) return 0.0;
-            if (match_fmt_pos < MAX_OSC_FMTS && m_var_fmt[match_fmt_pos])
-              m_var_fmt[match_fmt_pos][0] = (EEL_F)msg[0];
-            msg++;
-          }
-          else if (fmt_char == 'd' || fmt_char == 'u')
-          {
-            int len=0;
-            while (msg[len] >= '0' && msg[len] <= '9') len++;
-            if (!len) return 0.0;
-
-            if (match_fmt_pos < MAX_OSC_FMTS && m_var_fmt[match_fmt_pos])
-            {
-              char *bl=(char*)msg;
-              if (fmt_char == 'd') 
-                m_var_fmt[match_fmt_pos][0] = (EEL_F)atoi(msg);
-              else
-                m_var_fmt[match_fmt_pos][0] = (EEL_F)strtoul(msg,&bl,10);
-            }
-
-            msg+=len;
-          }
-          else if (fmt_char == 'x' || fmt_char == 'X')
-          {
-            int len=0;
-            while ((msg[len] >= '0' && msg[len] <= '9') ||
-                   (msg[len] >= 'A' && msg[len] <= 'F') ||
-                   (msg[len] >= 'a' && msg[len] <= 'f')
-                   ) len++;
-            if (!len) return 0.0;
-
-            if (match_fmt_pos < MAX_OSC_FMTS && m_var_fmt[match_fmt_pos])
-            {
-              char *bl=(char*)msg;
-              m_var_fmt[match_fmt_pos][0] = (EEL_F)strtoul(msg,&bl,16);
-            }
-
-            msg+=len;
-          }
-          else if (fmt_char == 'f')
-          {
-            int len=0;
-            while (msg[len] >= '0' && msg[len] <= '9') len++;
-            if (msg[len] == '.') 
-            { 
-              len++; 
-              while (msg[len] >= '0' && msg[len] <= '9') len++;
-            }
-            if (!len) return 0.0;
-
-            if (match_fmt_pos < MAX_OSC_FMTS && m_var_fmt[match_fmt_pos])
-              m_var_fmt[match_fmt_pos][0] = (EEL_F)atof(msg);
-
-            msg+=len;
-          }
-        }
-      break;
-      default:
-        if (toupper(fmtc) != toupper(msgc)) return 0.0;
-        fmt++;
-        msg++;
-      break;
-    }
-  }
-
-}
-
-EEL_F NSEEL_CGEN_CALL scriptInstance::_eel_match(void *opaque, EEL_F *fmt_index, EEL_F *value_index)
-{
-  scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
-  {
-    const char *fmt = _this->GetStringForIndex(*fmt_index);
-    const char *msg = _this->GetStringForIndex(*value_index);
-
-    if (fmt && msg) return _this->do_match(fmt,msg);
-  }
-  return 0.0;
-}
 
 EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
 {
@@ -1244,7 +537,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
     {
       const char *msg = _this->m_cur_oscmsg->GetMessage();
 
-      if (msg) return _this->do_match(fmt,msg);
+      if (msg) return eel_string_match(opaque,fmt,msg);
     }
   }
   return 0.0;
@@ -1323,7 +616,7 @@ void scriptInstance::load_script(WDL_FastString &results)
   );
 
   int x;
-  for (x=0;x<MAX_OSC_FMTS;x++)
+  for (x=0;x < MAX_OSC_FMTS;x++)
   {
     char tmp[32];
     sprintf(tmp,"fmt%d",x);
@@ -2076,23 +1369,8 @@ void initialize()
   NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
   NSEEL_addfunctionex("oscmatch",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
   NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
-  NSEEL_addfunctionex("printf",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_printf);
-  NSEEL_addfunctionex("strlen",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strlen);
-  NSEEL_addfunctionex("sprintf",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_sprintf);
-  NSEEL_addfunctionex("match",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_match);
 
-  NSEEL_addfunctionex("strcat",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strcat);
-  NSEEL_addfunctionex("strcpy",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strcpy);
-  
-  NSEEL_addfunctionex("strncat",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strncat);
-  NSEEL_addfunctionex("strncpy",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strncpy);
-  NSEEL_addfunctionex("str_getchar",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strgetchar);
-  NSEEL_addfunctionex("str_setlen",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strsetlen);
-  NSEEL_addfunctionex("strcpy_from",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strcpyfrom);
-  NSEEL_addfunctionex("str_setchar",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strsetchar);
-  NSEEL_addfunctionex("str_insert",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strinsert);
-  NSEEL_addfunctionex("str_delsub",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_eel_strdelsub);
-
+  EEL_string_register();
 
   if (!g_script_load_filenames.GetSize() && !g_script_load_paths.GetSize()) 
   {
