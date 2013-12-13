@@ -350,22 +350,24 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
   WDL_FastString newstr;
   const char *rdptr = curblock.Get();
   // preprocess to get strings from "", and replace with an index of STRING_INDEX_BASE+m_strings.GetSize()
-  int state=0; 
+  int comment_state=0; 
   // states:
   // 1 = comment to end of line
   // 2=comment til */
   while (*rdptr)
   {
-    switch (state)
+    const char tc = *rdptr;
+    switch (comment_state)
     {
       case 0:
-        if (*rdptr == '/')
+        if (tc == '/')
         {
-          if (rdptr[1] == '/') state=1;
-          else if (rdptr[1] == '*') state=2;
+          if (rdptr[1] == '/') comment_state=1;
+          else if (rdptr[1] == '*') comment_state=2;
         }
 
-        if (*rdptr == '"')
+
+        if (tc == '"')
         {
           // scan tokens and replace with (idx)
           newstr.Set("");
@@ -402,24 +404,24 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
 
           procOut.AppendFormatted(128,"(%d)",STRING_INDEX_BASE+m_strings.GetSize());
           m_strings.Add(strdup(newstr.Get()));
-
-          continue;
         }
+        else
+          procOut.Append(rdptr++,1);
+
       break;
       case 1:
-        if (*rdptr == '\n') state=0;
+        if (tc == '\n') comment_state=0;
+        procOut.Append(rdptr++,1);
       break;
       case 2:
-        if (*rdptr == '*' && rdptr[1] == '/') 
+        if (tc == '*' && rdptr[1] == '/') 
         {
           procOut.Append(rdptr++,1);
-          state=0;
+          comment_state=0;
         }
+        procOut.Append(rdptr++,1);
       break;
     }
-    if (state<3) procOut.Append(rdptr,1);
-
-    rdptr++;
   }
 
   m_code[parsestate]=NSEEL_code_compile_ex(m_vm,procOut.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);  
