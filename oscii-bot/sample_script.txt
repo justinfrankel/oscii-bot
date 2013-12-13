@@ -29,21 +29,40 @@
 //   fmt0..fmt31 -- format variables for oscsend(), oscmatch(), and printf()
 //   msg1..msg3  -- three bytes of MIDI, used by midisend() and set for each @midimsg call
 //   msgdev      -- device index of incoming MIDI message, set by @midimsg
+//   oscstr      -- only valid during @oscmsg, has string to OSC format
 // 
 // special functions:
 //   printf("string %d blah");                       -- output to log, allows %d %u %f etc, fmt0..fmt31 used
-//   oscsend(device_index, "/format", parameter);   -- /format can have a prefix char of b(ool) f(loat) i(nt) s(tring)
+//   oscsend(device_index, "/format", parameter);    -- /format can have a prefix char of b(ool) f(loat) i(nt) s(tring)
 //                                                       or t(oggle -- no parameter) to specify parameter type. 
 //                                                       if s, fmtX should be a string
 //                                                       device_index can be -1 for all OSC outputs, -100 for all
 //                                                       OSC outputs in all scripts (dangerous!)
-//   oscmatch("/format");                           -- /format matched. supports wildcards (* + and ?), and 
+//   oscmatch("/format");                            -- /format matched. supports wildcards (* + and ?), and 
 //                                                       %d/%f/%u/%X etc, updating fmt0..fmt31. 
 //                                                       returns 1 if full match, otherwise 0. fmt* may be updated
-//   midisend(device_index);                          -- sends msg1/msg2/msg3 to device_index. device_index can be
+//                                                       this is an alias of match(parm,oscstr)
+//   midisend(device_index);                         -- sends msg1/msg2/msg3 to device_index. device_index can be
 //                                                       -1 for all MIDI outputs, or -100 for all MIDI outputs in all
 //                                                       scripts (dangerous!)
-
+//
+//
+// string manipulation functions:
+//   sprintf(dest,"string %d blah");       -- format, output to dest (user string, 0..1023), returns length
+//   strlen(str);                          -- returns string length
+//   match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
+//   strcpy(str, srcstr);                  -- replaces str with srcstr
+//   strcat(str, srcstr);                  -- appends srcstr to str 
+//   strncpy(str, srcstr, maxlen);         -- replaces str with srcstr, up to maxlen (-1 for unlimited)
+//   strncat(str, srcstr, maxlen);         -- appends up to maxlen of srcstr to str (-1 for unlimited)
+//   strcpy_from(str,srcstr, offset);      -- copies srcstr to str, but starts reading srcstr at offset offset
+//   str_getchar(str, offset);             -- returns value at offset offset
+//   str_setchar(str, offset, value);      -- sets value at offset offset
+//   str_setlen(str, len);                 -- sets length of string (if increasing, will be space-padded)
+//                                            (returns previous length)
+//   str_delsub(str, pos, len);            -- deletes len chars at pos
+//   str_insert(str, srcstr, pos);         -- inserts srcstr at pos
+//   strcpy_substr(dest, src, offset, maxlen)
 
 
 
