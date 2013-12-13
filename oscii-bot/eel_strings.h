@@ -249,7 +249,7 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
 
         fmt++;
 
-        // maybe should do this greedily instead, searching from end of string? or optional...
+        // maybe should do this greedily like %s is, but for now we let %s be greedier than * and +
         while (*msg && !eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase)) msg++;
         return !!*msg;
       break;
@@ -259,10 +259,18 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
       break;
       case '%':
         {
-          const char fmt_char = fmt[1];
+          fmt++;
+          int fmt_len_parm = 0;
+          while (*fmt >= '0' && *fmt <= '9')
+          {
+            fmt_len_parm *= 10;
+            fmt_len_parm += *fmt - '0';
+            fmt++;
+          }
+          const char fmt_char = *fmt;
           if (!fmt_char) return false; // malformed
 
-          fmt+=2;
+          fmt++;
 
           if (fmt_char == '*' || 
               fmt_char == '?' || 
@@ -271,6 +279,35 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
           {
             if (*msg != fmt_char) return false;
             msg++;
+          }
+          else if (fmt_char == 's')
+          {
+            // search for a string of min length fmt_len_parm
+            const char *oldmsg = msg;
+            match_fmt_pos++;
+
+            // %s is greedier than * or +, scans from end of string to find a match
+            while (*msg) msg++;
+
+            while (--msg >= oldmsg + fmt_len_parm)
+            {
+              if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
+              {
+                EEL_F *var = EEL_STRING_GETFMTVAR(match_fmt_pos-1);
+                if (var)
+                {
+                  EEL_STRING_STORAGECLASS *wr=NULL;
+                  EEL_STRING_GET_FOR_INDEX(*var,&wr);
+                  if (wr) 
+                  {
+                    if (msg > oldmsg) wr->Set(oldmsg,msg-oldmsg);
+                    else wr->Set("");
+                  }
+                }
+                return true;
+              }
+            }
+            return false;
           }
           else if (fmt_char == 'c')
           {
