@@ -17,6 +17,7 @@
 #include "../WDL/queue.h"
 #include "../WDL/mutex.h"
 #include "../WDL/lineparse.h"
+#include "../WDL/wingui/wndsize.h"
 
 #include "device.h"
 #include "oscmsg.h"
@@ -1442,12 +1443,20 @@ HWND g_hwnd;
 
 WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
+  static WDL_WndSizer resize;
   static WDL_FastString results;
   switch (uMsg)
   {
     case WM_INITDIALOG:
       // lParam = config file
       g_hwnd=hwndDlg;
+      resize.init(hwndDlg);
+      resize.init_item(IDC_EDIT1,0,0,1,1);
+      resize.init_item(IDCANCEL,0,1,0,1);
+      resize.init_item(IDC_LASTMSG,0,1,1,1);
+      resize.init_item(IDC_CHECK1,1,1,1,1);
+      resize.init_item(IDC_BUTTON1,1,1,1,1);
+
       {
 #ifdef _WIN32
         HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
@@ -1472,6 +1481,18 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 #ifndef _WIN32
       SWELL_PostQuitMessage(0);
 #endif
+    break;
+    case WM_GETMINMAXINFO:
+      if (lParam)
+      {
+        ((MINMAXINFO*)lParam)->ptMinTrackSize.x = 300;
+        ((MINMAXINFO*)lParam)->ptMinTrackSize.y = 160;
+      }
+
+    return 1;
+    case WM_SIZE:
+      if (wParam != SIZE_MINIMIZED)
+        resize.onResize();
     break;
 
     case WM_TIMER:
