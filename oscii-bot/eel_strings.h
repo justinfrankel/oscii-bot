@@ -261,12 +261,13 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
           // greedy match
           const char *oldmsg = msg;
           while (*msg) msg++;
-          while (--msg >= oldmsg)
+          while (msg >= oldmsg)
           {
             if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
             {
               return true;
             }
+            msg--;
           }
           return false;
         }
@@ -308,7 +309,7 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
             // %s is greedier than * or +, scans from end of string to find a match
             while (*msg) msg++;
 
-            while (--msg >= oldmsg + fmt_len_parm)
+            while (msg >= oldmsg + fmt_len_parm)
             {
               if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
               {
@@ -325,6 +326,7 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
                 }
                 return true;
               }
+              msg--;
             }
             return false;
           }
