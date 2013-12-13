@@ -14,10 +14,10 @@
         <customObject id="-3" userLabel="Application" customClass="SWELLApplication"/>
         <menu title="AMainMenu" systemMenu="main" id="29">
             <items>
-                <menuItem title="oscii" id="56">
-                    <menu key="submenu" title="oscii" systemMenu="apple" id="57">
+                <menuItem title="OSCII-bot" id="56">
+                    <menu key="submenu" title="OSCII-bot" systemMenu="apple" id="57">
                         <items>
-                            <menuItem title="About oscii" id="58">
+                            <menuItem title="About OSCII-bot" id="58">
                                 <modifierMask key="keyEquivalentModifierMask"/>
                                 <connections>
                                     <action selector="orderFrontStandardAboutPanel:" target="-2" id="142"/>
@@ -36,7 +36,7 @@
                             <menuItem isSeparatorItem="YES" id="144">
                                 <modifierMask key="keyEquivalentModifierMask" command="YES"/>
                             </menuItem>
-                            <menuItem title="Hide oscii" keyEquivalent="h" id="134">
+                            <menuItem title="Hide OSCII-bot" keyEquivalent="h" id="134">
                                 <connections>
                                     <action selector="hide:" target="-1" id="367"/>
                                 </connections>
@@ -55,7 +55,7 @@
                             <menuItem isSeparatorItem="YES" id="149">
                                 <modifierMask key="keyEquivalentModifierMask" command="YES"/>
                             </menuItem>
-                            <menuItem title="Quit oscii" keyEquivalent="q" id="136">
+                            <menuItem title="Quit OSCII-bot" keyEquivalent="q" id="136">
                                 <connections>
                                     <action selector="terminate:" target="-3" id="449"/>
                                 </connections>
@@ -637,7 +637,7 @@
                     <modifierMask key="keyEquivalentModifierMask"/>
                     <menu key="submenu" title="Help" systemMenu="help" id="491">
                         <items>
-                            <menuItem title="oscii Help" keyEquivalent="?" id="492">
+                            <menuItem title="OSCII-bot Help" keyEquivalent="?" id="492">
                                 <connections>
                                     <action selector="showHelp:" target="-1" id="493"/>
                                 </connections>

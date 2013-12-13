@@ -271,9 +271,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		33AA3111185A7E8D001D767E /* oscii */ = {
+		33AA3111185A7E8D001D767E /* OSCII-bot */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 33AA3143185A7E8D001D767E /* Build configuration list for PBXNativeTarget "oscii" */;
+			buildConfigurationList = 33AA3143185A7E8D001D767E /* Build configuration list for PBXNativeTarget "OSCII-bot" */;
 			buildPhases = (
 				33AA310E185A7E8D001D767E /* Sources */,
 				33AA310F185A7E8D001D767E /* Frameworks */,
@@ -283,7 +283,7 @@
 			);
 			dependencies = (
 			);
-			name = oscii;
+			name = "OSCII-bot";
 			productName = oscii;
 			productReference = 33AA3112185A7E8D001D767E /* oscii.app */;
 			productType = "com.apple.product-type.application";
@@ -333,7 +333,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				33AA3111185A7E8D001D767E /* oscii */,
+				33AA3111185A7E8D001D767E /* OSCII-bot */,
 				33AA3132185A7E8D001D767E /* osciiTests */,
 			);
 		};
@@ -408,7 +408,7 @@
 /* Begin PBXTargetDependency section */
 		33AA3138185A7E8D001D767E /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = 33AA3111185A7E8D001D767E /* oscii */;
+			target = 33AA3111185A7E8D001D767E /* OSCII-bot */;
 			targetProxy = 33AA3137185A7E8D001D767E /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -597,7 +597,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		33AA3143185A7E8D001D767E /* Build configuration list for PBXNativeTarget "oscii" */ = {
+		33AA3143185A7E8D001D767E /* Build configuration list for PBXNativeTarget "OSCII-bot" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				33AA3144185A7E8D001D767E /* Debug */,
