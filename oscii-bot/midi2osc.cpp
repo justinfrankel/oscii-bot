@@ -1536,7 +1536,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 #ifdef _WIN32
         HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
         SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
-        systray_add(hwndDlg, 0, (HICON)icon, "Cockos OSCII");
+        systray_add(hwndDlg, 0, (HICON)icon, "Cockos OSCII-bot");
 #endif
 
         SendMessage(hwndDlg,WM_COMMAND,IDC_BUTTON1,0);
