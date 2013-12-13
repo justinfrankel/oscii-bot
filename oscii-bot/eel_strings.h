@@ -302,31 +302,49 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
           }
           else if (fmt_char == 's')
           {
+            match_fmt_pos++;
             // search for a string of min length fmt_len_parm
             const char *oldmsg = msg;
-            match_fmt_pos++;
 
-            // %s is greedier than * or +, scans from end of string to find a match
-            while (*msg) msg++;
-
-            while (msg >= oldmsg + fmt_len_parm)
+            if (fmt[0] == '?')
             {
-              if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
+              // %s? is lazy mode
+              fmt++;
+              if ((int)strlen(msg) >= fmt_len_parm)
               {
-                EEL_F *var = EEL_STRING_GETFMTVAR(match_fmt_pos-1);
-                if (var)
+                msg += fmt_len_parm;
+                while (*msg)
                 {
-                  EEL_STRING_STORAGECLASS *wr=NULL;
-                  EEL_STRING_GET_FOR_INDEX(*var,&wr);
-                  if (wr) 
-                  {
-                    if (msg > oldmsg) wr->Set(oldmsg,msg-oldmsg);
-                    else wr->Set("");
-                  }
+                  if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase)) goto got_string_match;
+                  msg++;
                 }
-                return true;
               }
-              msg--;
+            }
+            else
+            {
+              // default to greedy mode
+              while (*msg) msg++;
+
+              while (msg >= oldmsg + fmt_len_parm)
+              {
+                if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
+                {
+got_string_match:
+                  EEL_F *var = EEL_STRING_GETFMTVAR(match_fmt_pos-1);
+                  if (var)
+                  {
+                    EEL_STRING_STORAGECLASS *wr=NULL;
+                    EEL_STRING_GET_FOR_INDEX(*var,&wr);
+                    if (wr) 
+                    {
+                      if (msg > oldmsg) wr->Set(oldmsg,msg-oldmsg);
+                      else wr->Set("");
+                    }
+                  }
+                  return true;
+                }
+                msg--;
+              }
             }
             return false;
           }
