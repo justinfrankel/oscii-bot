@@ -38,11 +38,16 @@ BOOL systray_del(HWND hwnd, UINT uID);
 int g_recent_events[4];
 const char *g_code_names[4] = { "@init", "@timer", "@midimsg", "@oscmsg" };
 
+HWND g_hwnd;
+RECT g_last_wndpos;
+WDL_FastString g_ini_file;
+WDL_FastString g_default_script_path;
+WDL_PtrList<char> g_script_load_filenames, g_script_load_paths;
 
 class scriptInstance 
 {
   public:
-    scriptInstance(const char *fn) 
+    scriptInstance(const char *fn, WDL_FastString &results) 
     { 
       m_debugOut=0;
       m_fn.Set(fn);
@@ -50,12 +55,13 @@ class scriptInstance
       m_cur_oscmsg=0;
       memset(m_code,0,sizeof(m_code));
       clear();
+      load_script(results);
     }
     ~scriptInstance() 
     {
       clear();
     }
-    void reloadScript(WDL_FastString &results);
+    void load_script(WDL_FastString &results);
     void clear()
     {
       m_debugOut=0;
@@ -248,7 +254,7 @@ public:
     }
   } 
 
-  virtual void run()
+  virtual void run(WDL_FastString &results)
   {
     static char hdr[16] = { '#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 1, 0, 0, 0 };
 
@@ -927,7 +933,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
 }
 
 
-void scriptInstance::reloadScript(WDL_FastString &results)
+void scriptInstance::load_script(WDL_FastString &results)
 {
   clear();
 
@@ -1273,10 +1279,10 @@ void scriptInstance::reloadScript(WDL_FastString &results)
 
   fclose(fp);
 
-  if (!m_in_devs.GetSize()) results.Append("\tWarning: No @input opened\r\n");
-  if (!m_out_devs.GetSize()) results.Append("\tWarning: No @output opened\r\n");
+  if (!m_in_devs.GetSize()) results.Append("\tWarning: No @input specified\r\n");
+  if (!m_out_devs.GetSize()) results.Append("\tWarning: No @output specified\r\n");
 
-  results.AppendFormatted(512,"\t%d inputs, %d outputs opened, %d formats\r\n\r\n",
+  results.AppendFormatted(512,"\t%d inputs, %d outputs, %d formats\r\n\r\n",
       m_in_devs.GetSize(),m_out_devs.GetSize(),m_formats.GetSize());
 
 }
@@ -1399,34 +1405,67 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
 void NSEEL_HOSTSTUB_EnterMutex() { }
 void NSEEL_HOSTSTUB_LeaveMutex() { }
 
-void UpdateLogText(const WDL_FastString &str, HWND dest)
+void UpdateLogText(const WDL_FastString &str, HWND dest, bool doScroll)
 {
-#ifdef _WIN32
-  SendMessage(dest,WM_SETREDRAW,0,0);
-  SetWindowText(dest,str.Get());
-  SCROLLINFO si={sizeof(si),SIF_RANGE|SIF_POS|SIF_TRACKPOS,};
-  GetScrollInfo(dest,SB_VERT,&si);
-  SendMessage(dest, WM_VSCROLL, MAKEWPARAM(SB_THUMBPOSITION,si.nMax),0);
-  SendMessage(dest,WM_SETREDRAW,1,0);
-  InvalidateRect(dest,NULL,FALSE);
+  if (doScroll)
+  {
+  #ifdef _WIN32
+    SendMessage(dest,WM_SETREDRAW,0,0);
+    SetWindowText(dest,str.Get());
+    SCROLLINFO si={sizeof(si),SIF_RANGE|SIF_POS|SIF_TRACKPOS,};
+    GetScrollInfo(dest,SB_VERT,&si);
+    SendMessage(dest, WM_VSCROLL, MAKEWPARAM(SB_THUMBPOSITION,si.nMax),0);
+    SendMessage(dest,WM_SETREDRAW,1,0);
+    InvalidateRect(dest,NULL,FALSE);
 
-#else
-  SetWindowText(dest,str.Get());
-  SendMessage(dest,EM_SCROLL,SB_BOTTOM,0);
-#endif
+  #else
+    SetWindowText(dest,str.Get());
+    SendMessage(dest,EM_SCROLL,SB_BOTTOM,0);
+  #endif
+  }
+  else
+  {
+    SetWindowText(dest,str.Get());
+  }
+}
+
+void load_scripts_for_path(const char *path, WDL_FastString &results)
+{
+  WDL_DirScan ds;
+  WDL_String s;
+  if (!ds.First(path))
+  {
+    do
+    {
+      const char *fn = ds.GetCurrentFN();
+      if (fn[0] != '.' && strlen(fn)>4 && !stricmp(fn+strlen(fn)-4,".txt"))
+      {
+        ds.GetCurrentFullFN(&s);
+        g_scripts.Add(new scriptInstance(s.Get(),results));
+      }
+    }
+    while (!ds.Next());
+  }
 }
 
 void load_all_scripts(WDL_FastString &results)
 {
   g_inputs.Empty(true);
   g_outputs.Empty(true);
+  g_scripts.Empty(true);
 
   int x;
-  for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->reloadScript(results);
+  for (x=0;x<g_script_load_paths.GetSize();x++)
+  {
+    results.AppendFormatted(512,"===== Loading scripts from %s:\r\n\r\n",g_script_load_paths.Get(x));
+    load_scripts_for_path(g_script_load_paths.Get(x),results);
+  }
+  for (x=0;x<g_script_load_filenames.GetSize();x++)
+    g_scripts.Add(new scriptInstance(g_script_load_filenames.Get(x),results));
 
   results.AppendFormatted(512,"Total: %d scripts, %d inputs, %d outputs\r\n", g_scripts.GetSize(), g_inputs.GetSize(),g_outputs.GetSize());
 
-  results.Append("\r\nLog:\r\n");
+  results.Append("\r\n===========================================================================\r\n");
 
 
   for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->start(results);
@@ -1438,8 +1477,6 @@ void load_all_scripts(WDL_FastString &results)
   }
 
 }
-
-HWND g_hwnd;
 
 WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -1456,6 +1493,19 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
       resize.init_item(IDC_LASTMSG,0,1,1,1);
       resize.init_item(IDC_CHECK1,1,1,1,1);
       resize.init_item(IDC_BUTTON1,1,1,1,1);
+
+      g_last_wndpos.left = GetPrivateProfileInt("oscii-bot", "wnd_x",0,g_ini_file.Get());
+      g_last_wndpos.top = GetPrivateProfileInt("oscii-bot", "wnd_y",0,g_ini_file.Get());
+      g_last_wndpos.right = GetPrivateProfileInt("oscii-bot", "wnd_w",0,g_ini_file.Get());
+      g_last_wndpos.bottom = GetPrivateProfileInt("oscii-bot", "wnd_h",0,g_ini_file.Get());
+
+      if (g_last_wndpos.right > 0 && g_last_wndpos.bottom != 0)
+      {
+        g_last_wndpos.right += g_last_wndpos.left;
+        g_last_wndpos.bottom += g_last_wndpos.top;
+        SetWindowPos(hwndDlg,NULL,g_last_wndpos.left,g_last_wndpos.top,g_last_wndpos.right-g_last_wndpos.left,g_last_wndpos.bottom-g_last_wndpos.top,SWP_NOZORDER|SWP_NOACTIVATE);
+      }
+
 
       {
 #ifdef _WIN32
@@ -1477,6 +1527,18 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 #endif
     return 1;
     case WM_DESTROY:
+      if (g_last_wndpos.right > 0 && g_last_wndpos.bottom != 0)
+      {
+        char tmp[32];
+        sprintf(tmp,"%d",g_last_wndpos.left);
+        WritePrivateProfileString("oscii-bot","wnd_x", tmp, g_ini_file.Get());
+        sprintf(tmp,"%d",g_last_wndpos.top);
+        WritePrivateProfileString("oscii-bot","wnd_y", tmp, g_ini_file.Get());
+        sprintf(tmp,"%d",g_last_wndpos.right-g_last_wndpos.left);
+        WritePrivateProfileString("oscii-bot","wnd_w", tmp, g_ini_file.Get());
+        sprintf(tmp,"%d",g_last_wndpos.bottom-g_last_wndpos.top);
+        WritePrivateProfileString("oscii-bot","wnd_h", tmp, g_ini_file.Get());
+      }
       g_hwnd=NULL;
 #ifndef _WIN32
       SWELL_PostQuitMessage(0);
@@ -1493,6 +1555,13 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_SIZE:
       if (wParam != SIZE_MINIMIZED)
         resize.onResize();
+    case WM_MOVE:
+      {
+      #ifdef _WIN32
+          if (!IsIconic(hwndDlg) && !IsZoomed(hwndDlg))
+      #endif
+            GetWindowRect(hwndDlg,&g_last_wndpos);
+      }
     break;
 
     case WM_TIMER:
@@ -1514,7 +1583,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           if (g_scripts.Get(x)->run(curtime,results)) needUIupdate=true;
         }
 
-        for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run();  // send queued messages
+        for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run(results);  // send queued messages
 
         if (results.GetLength() != asz)
         {
@@ -1536,7 +1605,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           }
           if (IsDlgButtonChecked(hwndDlg,IDC_CHECK1))
           {
-            UpdateLogText(results,GetDlgItem(hwndDlg,IDC_EDIT1));
+            UpdateLogText(results,GetDlgItem(hwndDlg,IDC_EDIT1),true);
           }
         }
 
@@ -1561,7 +1630,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         case IDC_CHECK1:
           if (IsDlgButtonChecked(hwndDlg,IDC_CHECK1))
           {
-            UpdateLogText(results,GetDlgItem(hwndDlg,IDC_EDIT1));
+            UpdateLogText(results,GetDlgItem(hwndDlg,IDC_EDIT1),true);
           }
         break;
 
@@ -1577,7 +1646,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           {
             results.Set("");
             load_all_scripts(results);
-            UpdateLogText(results,GetDlgItem(hwndDlg,IDC_EDIT1));
+            UpdateLogText(results,GetDlgItem(hwndDlg,IDC_EDIT1),false);
           }
         break;
       }
@@ -1597,26 +1666,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
   return 0;
 }
 
-void load_scripts_for_path(const char *path)
-{
-  WDL_DirScan ds;
-  WDL_String s;
-  if (!ds.First(path))
-  {
-    do
-    {
-      const char *fn = ds.GetCurrentFN();
-      if (fn[0] != '.' && strlen(fn)>4 && !stricmp(fn+strlen(fn)-4,".cfg"))
-      {
-        ds.GetCurrentFullFN(&s);
-        g_scripts.Add(new scriptInstance(s.Get()));
-      }
-    }
-    while (!ds.Next());
-  }
-}
-
-void initialize(const char *exepath)
+void initialize()
 {
   JNL::open_socketlib();
 
@@ -1627,7 +1677,67 @@ void initialize(const char *exepath)
   NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
   NSEEL_addfunctionex("printf",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_printf);
 
- if (!g_scripts.GetSize()) load_scripts_for_path(exepath);
+  if (!g_script_load_filenames.GetSize() && !g_script_load_paths.GetSize()) 
+  {
+    g_script_load_paths.Add(strdup(g_default_script_path.Get()));
+  }
+}
+
+void OnCommandLineParameter(const char *parm, int &state)
+{
+  switch (state)
+  {
+    case 0:
+      if (parm[0] == '-')
+      {
+        if (!strcmp(parm,"-dir"))
+        {
+          state=1;
+        }
+        else
+        {
+          state=-1;
+        }
+      }
+      else
+      {
+        if (strstr(parm,"/") || strstr(parm,"\\"))
+        {
+          g_script_load_filenames.Add(strdup(parm));
+        }
+        else
+        {
+          WDL_FastString s(g_default_script_path.Get());
+#ifdef _WIN32
+          s.Append("\\");
+#else
+          s.Append("/");
+#endif
+          s.Append(parm);
+          g_script_load_filenames.Add(strdup(s.Get()));
+        }
+      }
+    break;
+    case 1:
+      if (strstr(parm,"/") || strstr(parm,"\\"))
+      {
+        g_script_load_paths.Add(strdup(parm));
+      }
+      else
+      {
+        WDL_FastString s(g_default_script_path.Get());
+#ifdef _WIN32
+        s.Append("\\");
+#else
+        s.Append("/");
+#endif
+        s.Append(parm);
+        g_script_load_paths.Add(strdup(s.Get()));
+      }
+      state=0;
+      // dir
+    break;
+  }
 }
 
 
@@ -1644,6 +1754,44 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   char *p=exepath;
   while (*p) p++;
   while (p >= exepath && *p != '\\') p--; *++p=0;
+  
+  if (exepath[0])
+    g_default_script_path.Set(exepath,strlen(exepath)-1);
+
+  {
+    FILE *fp = NULL;
+    if (g_default_script_path.Get()[0])
+    {
+      g_ini_file.Set(g_default_script_path.Get());
+      g_ini_file.Append("\\oscii-bot.ini");
+      fp = fopen(g_ini_file.Get(),"rb");
+    }
+
+    if (!fp)
+    {
+      HKEY k;
+      if (RegOpenKeyEx(HKEY_CURRENT_USER,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders",0,KEY_READ,&k) == ERROR_SUCCESS)
+      {
+        char buf[1024];
+        DWORD b=sizeof(buf);
+        DWORD t=REG_SZ;
+        if (RegQueryValueEx(k,"AppData",0,&t,(unsigned char *)buf,&b) == ERROR_SUCCESS && t == REG_SZ)
+        {
+          g_default_script_path.Set(buf);
+          g_default_script_path.Append("\\oscii-bot");
+          CreateDirectory(g_default_script_path.Get(),NULL);
+
+          g_ini_file.Set(g_default_script_path.Get());
+          g_ini_file.Append("\\oscii-bot.ini");
+        }
+        RegCloseKey(k);
+      }
+    }
+    else
+    {
+      fclose(fp);
+    }
+  }
 
   {
     int state=0;
@@ -1666,50 +1814,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
       if (!state) if (parm[0] == '/') parm[0]='-';
 
-      switch (state)
-      {
-        case 0:
-          if (parm[0] == '-')
-          {
-            if (!strcmp(parm,"-dir"))
-            {
-              state=1;
-            }
-            else
-            {
-              state=-1;
-            }
-          }
-          else
-          {
-            if (strstr(parm,"/") || strstr(parm,"\\"))
-            {
-              g_scripts.Add(new scriptInstance(parm));
-            }
-            else
-            {
-              WDL_FastString s(exepath);
-              s.Append(parm);
-              g_scripts.Add(new scriptInstance(s.Get()));
-            }
-          }
-        break;
-        case 1:
-          if (strstr(parm,"/") || strstr(parm,"\\"))
-          {
-            load_scripts_for_path(parm);
-          }
-          else
-          {
-            WDL_FastString s(exepath);
-            s.Append(parm);
-            load_scripts_for_path(s.Get());
-          }
-          state=0;
-          // dir
-        break;
-
-      }
+      OnCommandLineParameter(parm,state);
 
       if (state < 0) break;
     }
@@ -1717,13 +1822,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
     {
       MessageBox(NULL,
         "Usage:\r\n"
-        "OSCII [filename.cfg ...] [-dir pathwithcfgfiles]\r\n"
-        "if no config files specified, default will be all cfg files in program directory","Usage",MB_OK);
+        "OSCII [scriptfilename.txt ...] [-dir scriptwithtxtfiles]\r\n\r\n"
+        "If no script files specified, default will be all txt files in AppData/Roaming/OSCII-bot/","Usage",MB_OK);
       return 0;
     }
   }
 
-  initialize(exepath);
+  initialize();
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1), GetDesktopWindow(), mainProc);
 
@@ -1760,7 +1865,12 @@ BOOL systray_del(HWND hwnd, UINT uID) {
 
 
 #ifndef _WIN32
+extern "C" {
 
+char **g_argv;
+int g_argc;
+
+};
 
 INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 {
@@ -1774,6 +1884,9 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
         char *p=exepath;
         while (*p) p++;
         while (p >= exepath && *p != '/') p--; *++p=0;
+
+        // todo:g_argv, g_argc, ~/Library/Application Support/OSCII-bot etc
+
         initialize(exepath);
       }
     break;

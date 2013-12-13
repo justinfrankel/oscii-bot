@@ -168,10 +168,10 @@ void midiInputDevice::run(WDL_FastString &textOut)
       do_open();
       if (m_handle) 
       {
-        textOut.AppendFormatted(1024,"***** Reopened device %s\r\n",m_name_used);
+        textOut.AppendFormatted(1024,"***** Reopened MIDI input device %s\r\n",m_name_used);
         start();
       }
-      else if (had_handle) textOut.AppendFormatted(1024,"***** Closed device %s\r\n",m_name_used);
+      else if (had_handle) textOut.AppendFormatted(1024,"***** Lost MIDI input device %s\r\n",m_name_used);
     }
   }
 }
@@ -264,12 +264,15 @@ void midiOutputDevice::do_open(WDL_PtrList<outputDevice> *reuseDevList)
         if (midiOutOpen(&m_handle,x,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
         {
           m_handle=0;
-          m_failed_time=GetTickCount();
         }
         break;
       }
     }
   }
+  if (!m_handle)
+    m_failed_time=GetTickCount();
+
+
 }
 
 
@@ -285,13 +288,17 @@ void midiOutputDevice::do_close()
 }
 
 
-void midiOutputDevice::run()
+void midiOutputDevice::run(WDL_FastString &textOut)
 {
   if (m_failed_time && GetTickCount()>m_failed_time+1000)
   {
     // try to reopen
-    m_failed_time=0;
+    const bool had_handle = !!m_handle;
     do_open();
+
+    if (m_handle) textOut.AppendFormatted(1024,"***** Reopened MIDI output device %s\r\n",m_name_used);
+    else if (had_handle) textOut.AppendFormatted(1024,"***** Lost MIDI output device %s\r\n",m_name_used);
+
   }
 }
 

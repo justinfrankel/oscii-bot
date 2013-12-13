@@ -10,7 +10,7 @@ class outputDevice {
     outputDevice() { }
   public:
     virtual ~outputDevice() { }
-    virtual void run()=0;
+    virtual void run(WDL_FastString &textOut)=0;
     virtual void oscSend(const char *src, int len) { }
     virtual void midiSend(const unsigned char *buf, int len) { }
     virtual const char *get_type()=0;
@@ -58,7 +58,7 @@ public:
 
   virtual ~midiOutputDevice();
 
-  virtual void run();
+  virtual void run(WDL_FastString &textOut);
   virtual void midiSend(const unsigned char *buf, int len);
   virtual const char *get_type() { return "MIDI"; }
 

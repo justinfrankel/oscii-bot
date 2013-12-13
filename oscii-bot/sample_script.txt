@@ -1,0 +1,124 @@
+// @input lines:
+// usage: 
+//        @input devicenameforcode "substring match" [skip]
+//        @input devicenameforcode "MIDI:substring match" [skip]
+//        @input devicenameforcode "OSC:*:9000"
+//        @input devicenameforcode "OSC:192.168.1.2:9000"
+// can use any number of inputs. devicenameforcode must be unique, if you specify multiple @input lines
+// with common devicenameforcode, it will use the first successful line and ignore subsequent lines with that name
+// you can use any number of devices, too
+
+@input r24 "ZOOM R"
+
+
+// @output lines:
+// usage: 
+//        @output devicenameforcode "127.0.0.1:8000" [maxpacketsize] [sleepamt]
+//        @output devicenameforcode "OSC:127.0.0.1:8000" [maxpacketsize] [sleepamt]
+//        @output devicenameforcode "MIDI:substring match" [skip]
+ 
+// maxpacketsize is 1024 by default, can lower or raise depending on network considerations
+// sleepamt is 10 by default, sleeps for this many milliseconds after each packet. can be 0 for no sleep.
+
+@output localhost "127.0.0.1:8000"
+
+// code goes in one of @init, @timer, @oscmsg, or @midimsg sections
+
+// special variables:
+//   time        -- system timestamp (seconds, millisecond precision)
+//   fmt0..fmt31 -- format variables for oscsend(), oscmatch(), and printf()
+//   msg1..msg3  -- three bytes of MIDI, used by midisend() and set for each @midimsg call
+//   msgdev      -- device index of incoming MIDI message, set by @midimsg
+// 
+// special functions:
+//   printf({ string %d blah});                       -- output to log, allows %d %u %f etc, fmt0..fmt31 used
+//   oscsend(device_index, { /format }, parameter);   -- /format can have a prefix char of b(ool) f(loat) i(nt) s(tring)
+//                                                       or t(oggle -- no parameter) to specify parameter type. 
+//                                                       if s, strings should be specified within the same { } and will
+//                                                       use the fmtX as an index. 
+//                                                       device_index can be -1 for all OSC outputs, -100 for all
+//                                                       OSC outputs in all scripts (dangerous!)
+//   oscmatch({ /format });                           -- /format matched. supports wildcards (* + and ?), and 
+//                                                       %d/%f/%u/%X etc, updating fmt0..fmt31. 
+//                                                       returns 1 if full match, otherwise 0. fmt* may be updated
+//   midisend(device_index);                          -- sends msg1/msg2/msg3 to device_index. device_index can be
+//                                                       -1 for all MIDI outputs, or -100 for all MIDI outputs in all
+//                                                       scripts (dangerous!)
+
+
+
+
+@init
+
+destdevice = localhost; // can also be -1 for broadcast
+
+// 0= simplistic /track/x/volume, /master/volume
+// 1= /r24/rawfaderXX (00-09)
+// 2= /action/XY/cc/soft (tracks 1-8), master goes to /r24/rawfader09
+fader_mode=2;
+
+@timer
+
+// called around 100Hz, after each block of @midimsg/@oscmsg
+
+@oscmsg
+// receive an osc message. use:
+// msgdev will be set to inmmoing message device
+// oscmatch( { /track/%d/blah/%d/blah* }) // *, +, and ? are wildcards (matching 0 or more, 1 or more, or 1 exactly chars). use %* to insert literal *, etc
+// will set fmt0*. 
+// oscparm(x,v) will get parameter value x, setting v to $'f', $'i', $'s', or 0 if invalid, etc. if $'s', you can get individual chars from the string using ((str_offs<<16) + parm_idx)
+
+// can send MIDI via midisend(destdevice); // sends msg1/msg2/msg3
+
+@midimsg 
+// receives midi message
+// special variables:
+// msg1, msg2, msg3 (midi message bytes)
+// msgdev == r24  // can check which device, if we care
+
+(msg1&0xf0) == 0xe0 ? (
+
+  // using this to learn for monitoring fx, rather than master track
+  fader_mode > 0 ? (
+     fmtstr = { f/r24/rawfader%02.0f }; // raw fader
+     fmt0 = (msg1&0xf)+1;
+
+     fader_mode > 1 && fmt0 != 9 ? (
+       fmtstr = { f/action/%.0f/cc/soft }; // this is soft-takeover, track 01-08
+       fmt0 = ((fmt0-1) * 8) + 20;
+     );
+
+     val=(msg2 + (msg3*128))/16383;
+     val=val^0.75;
+     oscsend(destdevice,fmtstr,val);
+  ) : (
+     fmtstr = (msg1&0xf) == 8 ? { f/master/volume } : { "f/track/%.0f/volume"};
+     fmt0 = (msg1&0xf)+1;
+     oscsend(destdevice,fmtstr,(msg2 + (msg3*128))/16383);
+  );
+);
+
+msg1 == 0x90 ? (
+  msg2 == 0x5b ? oscsend(destdevice, { b/rewind }, msg3>64);
+  msg2 == 0x5c ? oscsend(destdevice, { b/forward }, msg3>64);
+
+  msg3>64 ? (
+    fmt0 = (msg2&7) + 1;
+
+    msg2 < 8 ?  oscsend(destdevice, { t/track/%.0f/recarm/toggle }, 0) :
+      msg2 < 16 ?  oscsend(destdevice, { t/track/%.0f/solo/toggle }, 0) :
+        msg2 < 24 ?  oscsend(destdevice, { t/track/%.0f/mute/toggle }, 0) : 
+    (
+      msg2 == 0x5e ? oscsend(destdevice, { b/play }, 1);
+      msg2 == 0x5d ? oscsend(destdevice, { b/stop }, 1);
+      msg2 == 0x5f ? oscsend(destdevice, { b/record }, 1);
+    )
+  );
+);
+
+msg1 == 0xb0 ? (
+  msg2 == 0x3c ? (
+    oscsend(destdevice, { f/action/992/cc/relative }, ((msg3&0x40) ? -1 : 1));
+  );
+
+);
