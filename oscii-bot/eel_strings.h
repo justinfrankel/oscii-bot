@@ -11,8 +11,9 @@
 
 
 /*
+  // writeable user-strings are 0..1023 (EEL_STRING_MAX_USER_STRINGS-1), and can be up to about EEL_STRING_MAXUSERSTRING_LENGTH_HINT bytes long
 
-   printf("string %d blah");                       -- output to log, allows %d %u %f etc, if host implements formats
+   printf("string %d blah");             -- output to log, allows %d %u %f etc, if host implements formats
    strlen(str);                          -- returns string length
    match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
    strcpy(str, srcstr);                  -- replaces str with srcstr
