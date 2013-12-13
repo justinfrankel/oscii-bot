@@ -168,10 +168,10 @@ void midiInputDevice::run(WDL_FastString &textOut)
       do_open();
       if (m_handle) 
       {
-        textOut.AppendFormatted(1024,"Reopened device %s\r\n",m_name_used);
+        textOut.AppendFormatted(1024,"***** Reopened device %s\r\n",m_name_used);
         start();
       }
-      else if (had_handle) textOut.AppendFormatted(1024,"Closed device %s\r\n",m_name_used);
+      else if (had_handle) textOut.AppendFormatted(1024,"***** Closed device %s\r\n",m_name_used);
     }
   }
 }
