@@ -106,24 +106,41 @@ class scriptInstance
 
     void WriteOutput(const char *buf)
     {
-      int buflen=strlen(buf);
-      if (m_debugOut && buflen>0)
+      if (m_debugOut && buf[0])
       {
-
-        if (!strcmp(buf, "<!CLS>")) 
-          m_debugOut->Set("");
-        else
+        const int oldlen = m_debugOut->GetLength() ;
+        const char *str = m_debugOut->Get();
+        if (oldlen>0 && str[oldlen-1] == '\r') // chintzy terminal emulation
         {
-          const int oldlen = m_debugOut->GetLength() ;
-          const char *str = m_debugOut->Get();
-          if (oldlen>0 && str[oldlen-1] == '\r') // chintzy terminal emulation
-          {
-            const char *p= str+ oldlen-2;
-            while (p >= str && *p != '\n') p--;
-            m_debugOut->SetLen(p-str + 1);
-          }
-          m_debugOut->Append(buf); 
+          const char *p= str+ oldlen-2;
+          while (p >= str && *p != '\n') p--;
+          m_debugOut->SetLen(p-str + 1);
         }
+
+        while (buf[0])
+        {
+          if (buf[0] == 27 && buf[1] == '[' && buf[2] == '2' && buf[3] == 'J')
+          {
+            m_debugOut->Set("");
+            buf += 4;
+          }
+          else
+          {
+#ifdef _WIN32
+            // convert \r\n, or \n, into \r\n
+            if (buf[0] == '\n' || (buf[0] == '\r' && buf[1] == '\n'))
+            {
+               m_debugOut->Append("\r\n",2);
+               buf += buf[0] == '\n' ? 1 : 2;
+            }
+            else
+#endif
+            {
+              m_debugOut->Append(buf++,1);
+            }
+          }
+        }
+
         g_force_results_update=true;
       }
     }
@@ -454,7 +471,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
         if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
 
         char buf[1024+128];
-        if (eel_format_strings(opaque,fmt,buf,sizeof(buf), 0))
+        if (eel_format_strings(opaque,fmt,buf,sizeof(buf)))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);

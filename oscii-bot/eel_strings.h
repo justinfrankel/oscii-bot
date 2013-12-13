@@ -112,7 +112,7 @@ static int eel_validate_format_specifier(const char *fmt_in, char *typeOut)
 
 }
 
-static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf_sz, int want_escapes)
+static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf_sz)
 {
   bool rv=true;
   int fmt_parmpos = 0;
@@ -164,53 +164,7 @@ static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf
     }
     else 
     {
-      if (want_escapes && fmt[0] == '\\')
-      {
-        const char nc = toupper(fmt[1]);
-        if (nc == '\\') { *op++ = '\\'; fmt+=2; }
-        else if (nc == 'N')  
-        { 
-          // (want_escapes & 2) means autoconvert \n to \r\n
-          if (want_escapes & 2) *op++ = '\r';
-          *op++ = '\n'; fmt+=2; 
-        }
-        else if (nc == 'R')  
-        { 
-          // if autoconverting \n to \r\n, filter \r if it is followed by \n
-          if (!(want_escapes & 2) || fmt[2] != '\\' || toupper(fmt[3]) != 'N') *op++ = '\r'; 
-          fmt+=2; 
-        }
-        else if (nc == 'T')  { *op++ = '\t'; fmt+=2; }
-        else if (nc=='X' || (nc >= '0' && nc <= '9'))
-        {
-          int base = 10;
-          fmt++;
-          if (nc == 'X') { fmt++; base=16; }
-          else if (nc == '0') base=8;
-
-          int c=0;
-          char thisc=toupper(*fmt);
-          while ((thisc >= '0' && thisc <= (base>=10 ? '9' : '7')) ||
-                 (base == 16 && thisc >= 'A' && thisc <= 'F')
-                 )
-          {
-            c *= base;
-            if (thisc >= 'A' && thisc <= 'F')
-              c+=thisc - 'A' + 10;
-            else
-              c += thisc - '0';
-
-            fmt++;
-            thisc=toupper(*fmt);
-          }
-          *op++ = (char)c;
-        }
-        else *op++ = *fmt++;
-      }
-      else
-      {
-        *op++ = *fmt++;
-      }
+      *op++ = *fmt++;
     }
 
   }
@@ -442,7 +396,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fm
       if (fmt)
       {
         char buf[8192];
-        if (eel_format_strings(opaque,fmt,buf,sizeof(buf), 2))
+        if (eel_format_strings(opaque,fmt,buf,sizeof(buf)))
         {
           wr->Set(buf);
           return wr->GetLength();
@@ -829,7 +783,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_printf(void *opaque, EEL_F *fmt_index)
     if (fmt)
     {
       char buf[4096];
-      if (eel_format_strings(opaque,fmt,buf,sizeof(buf), 2))
+      if (eel_format_strings(opaque,fmt,buf,sizeof(buf)))
       {
 #ifdef EEL_STRING_STDOUT_WRITE
         EEL_STRING_STDOUT_WRITE(buf);
@@ -934,30 +888,51 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
 
           rdptr++; 
 
-          int esc_state=0;
           while (*rdptr)
           {
-            if (esc_state==0)
+            if (*rdptr == '\\') 
             {
-              if (*rdptr == '\\') 
+              const char nc = rdptr[1];
+              if (nc == 'r' || nc == 'R') { newstr.Append("\r"); rdptr += 2; }
+              else if (nc == 'n' || nc == 'N') { newstr.Append("\n"); rdptr += 2; }
+              else if (nc == 't' || nc == 'T') { newstr.Append("\t"); rdptr += 2; }
+              else if ((nc >= '0' && nc <= '9') || nc == 'x' || nc == 'X')
               {
-                esc_state=1;
+                int base = 10;
+                rdptr++;
+                if (nc == 'X' || nc == 'x') { rdptr++; base=16; }
+                else if (nc == '0') base=8;
+
+                unsigned char c=0;
+                char thisc=toupper(*rdptr);
+                while ((thisc >= '0' && thisc <= (base>=10 ? '9' : '7')) ||
+                       (base == 16 && thisc >= 'A' && thisc <= 'F'))
+                {
+                  c *= base;
+                  if (thisc >= 'A' && thisc <= 'F') c+=thisc - 'A' + 10;
+                  else c += thisc - '0';
+                  rdptr++;
+                  thisc=toupper(*rdptr);
+                }
+                newstr.Append((char*)&c,1);
               }
-              else if (*rdptr == '"')
+              else 
+              {
+                const int n=rdptr[1] ? 2 :1;
+                newstr.Append(rdptr,n);
+                rdptr+=n;
+              }
+            }
+            else 
+            {
+              if (*rdptr == '"')
               {
                 if (rdptr[1] != '"') break;
                 // "" converts to "
                 rdptr++;
               }
+              newstr.Append(rdptr++,1);
             }
-            else 
-            {
-              if (*rdptr != '"') newstr.Append("\\",1);
-              esc_state=0;
-            }
-
-            if (!esc_state) newstr.Append(rdptr,1);
-            rdptr++;
           }
 
           if (*rdptr) rdptr++; // skip trailing quote
