@@ -13,6 +13,7 @@
   // writeable user-strings are 0..1023 (EEL_STRING_MAX_USER_STRINGS-1), and can be up to about EEL_STRING_MAXUSERSTRING_LENGTH_HINT bytes long
 
    printf("string %d blah");             -- output to log, allows %d %u %f etc, if host implements formats
+   sprintf(str,"string %d blah");        -- output to str
    strlen(str);                          -- returns string length
    match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
    matchi("*test*", "this is a test")    -- search for first parameter regex-style in second parameter (case insensitive)
@@ -28,7 +29,6 @@
    str_getchar(str, offset);             -- returns value at offset offset
    str_setchar(str, offset, value);      -- sets value at offset offset
    str_setlen(str, len);                 -- sets length of string (if increasing, will be space-padded)
-                                            (returns previous length)
    str_delsub(str, pos, len);            -- deletes len chars at pos
    str_insert(str, srcstr, pos);         -- inserts srcstr at pos
 
@@ -399,7 +399,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fm
         if (eel_format_strings(opaque,fmt,buf,sizeof(buf)))
         {
           wr->Set(buf);
-          return wr->GetLength();
         }
         else
         {
@@ -416,7 +415,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fm
       }
     }
   }
-  return 0.0;
+  return *strOut;
 }
 
 
@@ -448,7 +447,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fm
           int ml=-1;
           if (maxlen && *maxlen >= 0) ml = (int)*maxlen;
           wr->Append(fmt, ml);
-          return wr->GetLength();
         }
       }
       else
@@ -459,7 +457,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fm
       }
     }
   }
-  return 0.0;
+  return *strOut;
 }
 
 static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *offs)
@@ -483,15 +481,16 @@ static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F 
         if (o < 0) o=0;
         if (o >= (int)strlen(fmt)) wr->Set("");
         else wr->Set(fmt+o);
-
-        return wr->GetLength();
       }
+      else
+      {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"strcpy_from: bad format specifier passed %f\n",*fmt_index);
+        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"strcpy_from: bad format specifier passed %f\n",*fmt_index);
 #endif
+      }
     }
   }
-  return 0.0;
+  return *strOut;
 }
 
 
@@ -515,14 +514,16 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fm
         int ml=-1;
         if (maxlen && *maxlen >= 0) ml = (int)*maxlen;
         wr->Set(fmt,ml);
-        return wr->GetLength();
       }
+      else
+      {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scpy: bad format specifier passed %f\n",maxlen ? "n":"",*fmt_index);
+        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scpy: bad format specifier passed %f\n",maxlen ? "n":"",*fmt_index);
 #endif
+      }
     }
   }
-  return 0.0;
+  return *strOut;
 }
 
 
@@ -641,7 +642,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetchar(void *opaque, EEL_F *strOut, EEL_F 
       }
     }
   }
-  return 0;
+  return *strOut;
 }
 
 static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *fmt_index, EEL_F *pos)
@@ -664,7 +665,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
         int p = (int)*pos;
         if (p < 0) 
         {
-          if ((-p) >= strlen(fmt)) return 0.0;
+          if ((-p) >= strlen(fmt)) return *strOut;
 
           fmt += -p;
           p=0;
@@ -678,11 +679,11 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
 #ifdef EEL_STRING_DEBUGOUT
             if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_insert: will not grow string since it is already %d bytes\n",wr->GetLength());
 #endif
-            return 0.0;
+            return *strOut;
           }
           wr->Insert(fmt,p);
 
-          return insert_l;
+          return *strOut;
         }
       }
       else
@@ -693,7 +694,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
       }
     }
   }
-  return 0.0;
+  return *strOut;
 }
 
 static EEL_F NSEEL_CGEN_CALL _eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *pos, EEL_F *len)
@@ -719,11 +720,9 @@ static EEL_F NSEEL_CGEN_CALL _eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *
       }
       if (l>0)
         wr->DeleteSub(p,l);
-
-      return wr->GetLength();
     }
   }
-  return -1.0;
+  return *strOut;
 }
 
 static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *newlen)
@@ -740,7 +739,6 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *
     }
     else
     {
-      int oldlen = wr->GetLength();
       int l = (int) *newlen;
       if (l < 0) l=0;
       if (l > EEL_STRING_MAXUSERSTRING_LENGTH_HINT)
@@ -752,10 +750,9 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *
       }
       wr->SetLen(l);
 
-      return oldlen;
     }
   }
-  return -1.0;
+  return *strOut;
 }
 
 
@@ -766,7 +763,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strlen(void *opaque, EEL_F *fmt_index)
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
     if (fmt)
     {
-      return strlen(fmt);
+      return (EEL_F)strlen(fmt);
     }
   }
   return 0.0;

@@ -48,7 +48,7 @@
 //
 //
 // string manipulation functions:
-//   sprintf(dest,"string %d blah");       -- format, output to dest (user string, 0..1023), returns length
+//   sprintf(dest,"string %d blah");       -- format, output to dest (user string, 0..1023)
 //   strlen(str);                          -- returns string length
 //   match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
 //   matchi("*test*", "this is a test")    -- search for first parameter regex-style in second parameter (case insensitive)
@@ -64,7 +64,6 @@
 //   str_getchar(str, offset);             -- returns value at offset offset
 //   str_setchar(str, offset, value);      -- sets value at offset offset
 //   str_setlen(str, len);                 -- sets length of string (if increasing, will be space-padded)
-//                                            (returns previous length)
 //   str_delsub(str, pos, len);            -- deletes len chars at pos
 //   str_insert(str, srcstr, pos);         -- inserts srcstr at pos
 //   strcpy_substr(dest, src, offset, maxlen)
