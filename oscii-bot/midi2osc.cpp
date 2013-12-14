@@ -181,9 +181,9 @@ class scriptInstance
     {
       const int n = m_strings.GetSize();
       int x;
-      for (x=0;x<n;x++) if (!strcmp(m_strings.Get(x),str)) return x;
-      m_strings.Add(strdup(str));
-      return n;
+      for (x=0;x<n && strcmp(m_strings.Get(x),str);x++);
+      if (x==n) m_strings.Add(strdup(str));
+      return x+STRING_INDEX_BASE;
     }
 
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)

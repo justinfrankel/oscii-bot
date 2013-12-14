@@ -77,7 +77,7 @@ static int eel_validate_format_specifier(const char *fmt_in, char *typeOut)
     if (c == 'f'|| c=='e' || c=='E' || c=='g' || c=='G' || c == 'd' || c == 'u' || c == 'x' || c == 'X' || c == 'c' || c =='s' || c=='S') 
     {     
       if (typeOut) *typeOut = c;
-      return fmt - fmt_in;
+      return (int) (fmt - fmt_in);
     }
     else if (c == '.') 
     {
@@ -291,7 +291,7 @@ got_string_match:
                     EEL_STRING_GET_FOR_INDEX(*var,&wr);
                     if (wr) 
                     {
-                      if (msg > oldmsg) wr->Set(oldmsg,msg-oldmsg);
+                      if (msg > oldmsg) wr->Set(oldmsg,(int) (msg-oldmsg));
                       else wr->Set("");
                     }
                   }
@@ -670,7 +670,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
           fmt += -p;
           p=0;
         }
-        int insert_l = strlen(fmt);
+        const int insert_l = (int)strlen(fmt);
 
         if (insert_l>0)
         {
