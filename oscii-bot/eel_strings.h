@@ -4,7 +4,7 @@
 // required for context
 // #define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
 // #define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
-// #define EEL_STRING_ADDTOTABLE(x)  _this->m_strings.Add(strdup(x.Get()));
+// #define EEL_STRING_ADDTOTABLE(x)  _this->AddString(x.Get())
 // #define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+_this->m_strings.GetSize() - 1)
 
 
@@ -936,8 +936,8 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
 
           if (*rdptr) rdptr++; // skip trailing quote
 
-          EEL_STRING_ADDTOTABLE(newstr)
-          procOut.AppendFormatted(128,"(%d)",EEL_STRING_GETLASTINDEX());
+          
+          procOut.AppendFormatted(128,"(%d)",EEL_STRING_ADDTOTABLE(newstr));
 
         }
         else

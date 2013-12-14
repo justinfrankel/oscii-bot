@@ -136,6 +136,10 @@ SOURCE=.\device.h
 # End Source File
 # Begin Source File
 
+SOURCE=.\eel_strings.h
+# End Source File
+# Begin Source File
+
 SOURCE=.\midi2osc.cpp
 # End Source File
 # Begin Source File

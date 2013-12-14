@@ -177,6 +177,15 @@ class scriptInstance
 
     WDL_PtrList<char> m_strings;
     
+    int AddString(const char *str)
+    {
+      const int n = m_strings.GetSize();
+      int x;
+      for (x=0;x<n;x++) if (!strcmp(m_strings.Get(x),str)) return x;
+      m_strings.Add(strdup(str));
+      return n;
+    }
+
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)
     {
       int idx = (int) (val+0.5);
@@ -228,7 +237,7 @@ class scriptInstance
 
 #define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
 #define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
-#define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->m_strings.Add(strdup(x.Get()));
+#define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x.Get())
 #define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+((scriptInstance*)(opaque))->m_strings.GetSize() - 1)
 #define EEL_STRING_DEBUGOUT (((scriptInstance*)(opaque))->m_debugOut)
 #define EEL_STRING_STDOUT_WRITE(x) ((scriptInstance*)(opaque))->WriteOutput(x) 
