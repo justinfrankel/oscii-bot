@@ -5,8 +5,6 @@
 // #define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
 // #define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
 // #define EEL_STRING_ADDTOTABLE(x)  _this->AddString(x.Get())
-// #define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+_this->m_strings.GetSize() - 1)
-
 
 
 /*
@@ -387,7 +385,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fm
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"sprintf: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("sprintf: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -403,14 +401,14 @@ static EEL_F NSEEL_CGEN_CALL _eel_sprintf(void *opaque, EEL_F *strOut, EEL_F *fm
         else
         {
 #ifdef EEL_STRING_DEBUGOUT
-          if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"sprintf: bad format string %s\n",fmt);
+          EEL_STRING_DEBUGOUT("sprintf: bad format string %s",fmt);
 #endif
         }
       }
       else
       {
 #ifdef EEL_STRING_DEBUGOUT
-        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"sprintf: bad format specifier passed %f\n",*fmt_index);
+        EEL_STRING_DEBUGOUT("sprintf: bad format specifier passed %f",*fmt_index);
 #endif
       }
     }
@@ -428,7 +426,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fm
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scat: bad destination specifier passed %f\n",maxlen ? "n":"",*strOut);
+      EEL_STRING_DEBUGOUT("str%scat: bad destination specifier passed %f",maxlen ? "n":"",*strOut);
 #endif
     }
     else
@@ -439,7 +437,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fm
         if (wr->GetLength() > EEL_STRING_MAXUSERSTRING_LENGTH_HINT)
         {
 #ifdef EEL_STRING_DEBUGOUT
-          if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scat: will not grow string since it is already %d bytes\n",maxlen ? "n":"",wr->GetLength());
+          EEL_STRING_DEBUGOUT("str%scat: will not grow string since it is already %d bytes",maxlen ? "n":"",wr->GetLength());
 #endif
         }
         else
@@ -452,7 +450,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncat(void *opaque, EEL_F *strOut, EEL_F *fm
       else
       {
 #ifdef EEL_STRING_DEBUGOUT
-        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scat: bad format specifier passed %f\n",maxlen ? "n":"",*fmt_index);
+        EEL_STRING_DEBUGOUT("str%scat: bad format specifier passed %f",maxlen ? "n":"",*fmt_index);
 #endif
       }
     }
@@ -469,7 +467,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F 
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"strcpy_from: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("strcpy_from: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -485,7 +483,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strcpyfrom(void *opaque, EEL_F *strOut, EEL_F 
       else
       {
 #ifdef EEL_STRING_DEBUGOUT
-        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"strcpy_from: bad format specifier passed %f\n",*fmt_index);
+        EEL_STRING_DEBUGOUT("strcpy_from: bad format specifier passed %f",*fmt_index);
 #endif
       }
     }
@@ -503,7 +501,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fm
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scpy: bad destination specifier passed %f\n",maxlen ? "n":"",*strOut);
+      EEL_STRING_DEBUGOUT("str%scpy: bad destination specifier passed %f",maxlen ? "n":"",*strOut);
 #endif
     }
     else
@@ -518,7 +516,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncpy(void *opaque, EEL_F *strOut, EEL_F *fm
       else
       {
 #ifdef EEL_STRING_DEBUGOUT
-        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scpy: bad format specifier passed %f\n",maxlen ? "n":"",*fmt_index);
+        EEL_STRING_DEBUGOUT("str%scpy: bad format specifier passed %f",maxlen ? "n":"",*fmt_index);
 #endif
       }
     }
@@ -536,7 +534,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strncmp(void *opaque, EEL_F *aa, EEL_F *bb, EE
     if (!a || !b)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%scmp: bad specifier(s) passed %f/%f\n",maxlen ? "n" : "",*aa,*bb);
+      EEL_STRING_DEBUGOUT("str%scmp: bad specifier(s) passed %f/%f",maxlen ? "n" : "",*aa,*bb);
 #endif
     }
     else
@@ -556,7 +554,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strnicmp(void *opaque, EEL_F *aa, EEL_F *bb, E
     if (!a || !b)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str%sicmp: bad specifier(s) passed %f/%f\n",maxlen ? "n" : "",*aa,*bb);
+      EEL_STRING_DEBUGOUT("str%sicmp: bad specifier(s) passed %f/%f",maxlen ? "n" : "",*aa,*bb);
 #endif
     }
     else
@@ -600,7 +598,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strgetchar(void *opaque, EEL_F *strOut, EEL_F 
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_getchar: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("str_getchar: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -621,7 +619,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetchar(void *opaque, EEL_F *strOut, EEL_F 
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_setchar: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("str_setchar: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -654,7 +652,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_insert: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("str_insert: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -677,7 +675,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
           if (wr->GetLength() > EEL_STRING_MAXUSERSTRING_LENGTH_HINT)
           {
 #ifdef EEL_STRING_DEBUGOUT
-            if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_insert: will not grow string since it is already %d bytes\n",wr->GetLength());
+            EEL_STRING_DEBUGOUT("str_insert: will not grow string since it is already %d bytes",wr->GetLength());
 #endif
             return *strOut;
           }
@@ -689,7 +687,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
       else
       {
 #ifdef EEL_STRING_DEBUGOUT
-        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_insert: bad source specifier passed %f\n",*fmt_index);
+        EEL_STRING_DEBUGOUT("str_insert: bad source specifier passed %f",*fmt_index);
 #endif
       }
     }
@@ -706,7 +704,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strdelsub(void *opaque, EEL_F *strOut, EEL_F *
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_delsub: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("str_delsub: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -734,7 +732,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *
     if (!wr)
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_setlen: bad destination specifier passed %f\n",*strOut);
+      EEL_STRING_DEBUGOUT("str_setlen: bad destination specifier passed %f",*strOut);
 #endif
     }
     else
@@ -744,7 +742,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_strsetlen(void *opaque, EEL_F *strOut, EEL_F *
       if (l > EEL_STRING_MAXUSERSTRING_LENGTH_HINT)
       {
 #ifdef EEL_STRING_DEBUGOUT
-        EEL_STRING_DEBUGOUT->AppendFormatted(512,"str_setlen: clamping requested length of %d to %d\n",l,EEL_STRING_MAXUSERSTRING_LENGTH_HINT);
+         EEL_STRING_DEBUGOUT("str_setlen: clamping requested length of %d to %d",l,EEL_STRING_MAXUSERSTRING_LENGTH_HINT);
 #endif
         l=EEL_STRING_MAXUSERSTRING_LENGTH_HINT;
       }
@@ -790,14 +788,14 @@ static EEL_F NSEEL_CGEN_CALL _eel_printf(void *opaque, EEL_F *fmt_index)
       else
       {
 #ifdef EEL_STRING_DEBUGOUT
-        if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"printf: bad format string %s\n",fmt);
+        EEL_STRING_DEBUGOUT("printf: bad format string %s",fmt);
 #endif
       }
     }
     else
     {
 #ifdef EEL_STRING_DEBUGOUT
-      if (EEL_STRING_DEBUGOUT) EEL_STRING_DEBUGOUT->AppendFormatted(512,"printf: bad format specifier passed %f\n",*fmt_index);
+      EEL_STRING_DEBUGOUT("printf: bad format specifier passed %f",*fmt_index);
 #endif
     }
   }

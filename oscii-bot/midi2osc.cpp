@@ -183,6 +183,18 @@ class scriptInstance
 
     WDL_PtrList<char> m_strings;
     
+    void DebugOutput(const char *fmt, ...)
+    {
+      va_list arglist;
+      va_start(arglist, fmt);
+      if (m_debugOut)
+      {
+        m_debugOut->SetAppendFormattedArgs(true,512,fmt,arglist);
+        m_debugOut->Append("\r\n");
+      }
+      va_end(arglist);
+    }
+
     int AddString(const char *str)
     {
       const int n = m_strings.GetSize();
@@ -237,8 +249,8 @@ class scriptInstance
 #define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
 #define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
 #define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x.Get())
-#define EEL_STRING_GETLASTINDEX() (scriptInstance::STRING_INDEX_BASE+((scriptInstance*)(opaque))->m_strings.GetSize() - 1)
-#define EEL_STRING_DEBUGOUT (((scriptInstance*)(opaque))->m_debugOut)
+
+#define EEL_STRING_DEBUGOUT ((scriptInstance*)(opaque))->DebugOutput // no parameters, since it takes varargs
 #define EEL_STRING_STDOUT_WRITE(x) ((scriptInstance*)(opaque))->WriteOutput(x) 
 
 #include "eel_strings.h"
@@ -468,7 +480,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
     outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
     if (!output && output_idx >= 0)
     {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"oscsend(): output device %f invalid\r\n",*dest_device);
+      _this->DebugOutput("oscsend(): output device %f invalid",*dest_device);
     }
     if (output || output_idx == -1 || output_idx==-100)
     {
@@ -535,12 +547,12 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
         }
         else
         {
-          if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"oscsend(): bad format string '%s'\r\n",fmt);
+          _this->DebugOutput("oscsend(): bad format string '%s'",fmt);
         }
       }
       else
       {
-        if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"oscsend(): bad format index %f\r\n",*fmt_index);
+        _this->DebugOutput("oscsend(): bad format index %f",*fmt_index);
       }
     }
   }
@@ -602,7 +614,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
     outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
     if (!output && output_idx>=0)
     {
-      if (_this->m_debugOut) _this->m_debugOut->AppendFormatted(512,"midisend(): device %f invalid\r\n",*dest_device);
+      _this->DebugOutput("midisend(): device %f invalid",*dest_device);
     }
     if (output || output_idx == -1 || output_idx==-100)
     {
