@@ -878,10 +878,17 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
         }
 
 
-        if (tc == '"')
+        if (tc == '$' && rdptr[1] == '\'' && rdptr[2] && rdptr[3] == '\'')
         {
-          // scan tokens and replace with (idx)
+          // ignore $'x' and do default processing
+          procOut.Append(rdptr,4);
+          rdptr+=4;
+        }
+        else if (tc == '"' || tc == '\'')
+        {
+          // scan tokens and replace with (idx) and padding
           newstr.Set("");
+          const char *rdptr_start = rdptr;
 
           rdptr++; 
 
@@ -893,6 +900,7 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
               if (nc == 'r' || nc == 'R') { newstr.Append("\r"); rdptr += 2; }
               else if (nc == 'n' || nc == 'N') { newstr.Append("\n"); rdptr += 2; }
               else if (nc == 't' || nc == 'T') { newstr.Append("\t"); rdptr += 2; }
+              else if (nc == '\'' || nc == '\"') { newstr.Append(&nc,1); rdptr+=2; }
               else if ((nc >= '0' && nc <= '9') || nc == 'x' || nc == 'X')
               {
                 int base = 8;
@@ -921,10 +929,10 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
             }
             else 
             {
-              if (*rdptr == '"')
+              if (*rdptr == tc)
               {
-                if (rdptr[1] != '"') break;
-                // "" converts to "
+                if (rdptr[1] != tc) break;
+                // "" converts to ", '' to '
                 rdptr++;
               }
               newstr.Append(rdptr++,1);
@@ -933,9 +941,55 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
 
           if (*rdptr) rdptr++; // skip trailing quote
 
-          
-          procOut.AppendFormatted(128,"(%d)",EEL_STRING_ADDTOTABLE(newstr));
+          char t[128];
+          if (tc == '\"') 
+          {
+            snprintf(t,sizeof(t),"(%u",EEL_STRING_ADDTOTABLE(newstr));
+          }
+          else
+          {
+            unsigned int val=0;
+            const unsigned char *p = (const unsigned char *)newstr.Get();
+            while (*p)
+            {
+              val <<= 8;
+              val += *p++;
+            }
+            snprintf(t,sizeof(t),"(%u",val);
+          }
 
+          procOut.Append(t);
+
+          // rdptr-rdptr_start is the original string length
+          int pad_len = (int)(rdptr-rdptr_start) - (int)strlen(t) - 1;
+          if (pad_len > 6)
+          {
+            // pad with /*blahhhhh*/
+            pad_len -= 4;
+            procOut.Append("/*");
+            const char *rds = rdptr_start+1;
+            while (pad_len-- > 0)
+            {
+              if (rds[0] == '*' && rds[1] == '/' && pad_len > 0)
+              {
+                procOut.Append("_/");
+                rds+=2;
+                pad_len--;
+              }
+              else
+              {
+                procOut.Append(rds,1);
+                rds++;
+              }
+            }
+            procOut.Append("*/");
+          }
+          else 
+          {
+            // pad with blanks
+            while (pad_len-- > 0) procOut.Append(" ");
+          }
+          procOut.Append(")");
         }
         else
           procOut.Append(rdptr++,1);

@@ -64,7 +64,7 @@ class scriptInstance
     {
       clear();
       int x;
-      for (x=0;x<EEL_STRING_MAX_USER_STRINGS;x++) delete m_rw_strings[x];
+      for (x=0;x<MAX_USER_STRINGS;x++) delete m_rw_strings[x];
     }
 
     void load_script(WDL_FastString &results);
@@ -75,7 +75,7 @@ class scriptInstance
       m_out_devs.Empty();
       m_strings.Empty(true,free);
       int x;
-      for (x=0;x<EEL_STRING_MAX_USER_STRINGS;x++) if (m_rw_strings[x]) m_rw_strings[x]->Set("");
+      for (x=0;x<MAX_USER_STRINGS;x++) if (m_rw_strings[x]) m_rw_strings[x]->Set("");
 
       if (m_builtin_code) NSEEL_code_free(m_builtin_code);
       m_builtin_code = NULL;
@@ -168,12 +168,18 @@ class scriptInstance
     WDL_HeapBuf m_incoming_events;  // incomingEvent list, each is 8-byte aligned
     WDL_Mutex m_incoming_events_mutex;
 
-    enum { 
-      EEL_STRING_MAX_USER_STRINGS=1024, 
-      OSC_CURMSG_STRING=7317
+
+    enum {
+        MAX_USER_STRINGS=1024,  // 0...1023
+        OSC_CURMSG_STRING=8000,
+        STRING_INDEX_BASE=9000, // 9000...9000+however many used
+
+        INPUT_INDEX_BASE =0x400000,
+        OUTPUT_INDEX_BASE=0x500000
     };
+
     
-    WDL_FastString *m_rw_strings[EEL_STRING_MAX_USER_STRINGS];
+    WDL_FastString *m_rw_strings[MAX_USER_STRINGS];
 
     WDL_PtrList<char> m_strings;
     
@@ -189,7 +195,7 @@ class scriptInstance
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)
     {
       int idx = (int) (val+0.5);
-      if (idx>=0 && idx < EEL_STRING_MAX_USER_STRINGS)
+      if (idx>=0 && idx < MAX_USER_STRINGS)
       {
         if (isWriteableAs)
         {
@@ -222,13 +228,6 @@ class scriptInstance
 
     const OscMessageRead *m_cur_oscmsg;
   
-
-    enum {
-        STRING_INDEX_BASE=0x100000,
-        INPUT_INDEX_BASE =0x400000,
-        OUTPUT_INDEX_BASE=0x500000
-    };
-
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
