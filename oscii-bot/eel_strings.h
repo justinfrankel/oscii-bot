@@ -898,10 +898,9 @@ void eel_preprocess_strings(void *opaque, WDL_FastString &procOut, const char *r
               else if (nc == 't' || nc == 'T') { newstr.Append("\t"); rdptr += 2; }
               else if ((nc >= '0' && nc <= '9') || nc == 'x' || nc == 'X')
               {
-                int base = 10;
+                int base = 8;
                 rdptr++;
                 if (nc == 'X' || nc == 'x') { rdptr++; base=16; }
-                else if (nc == '0') base=8;
 
                 unsigned char c=0;
                 char thisc=toupper(*rdptr);
