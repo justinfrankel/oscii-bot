@@ -729,12 +729,13 @@ void scriptInstance::load_script(WDL_FastString &results)
       }
       else if (!strcmp(tok,"@input"))
       {
-        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
+        int this_type;
+
+        if (lp.getnumtokens()<4 || !lp.gettoken_str(1)[0] || (this_type = lp.gettoken_enum(2,"MIDI\0OSC\0"))<0)
         {
-          results.Append("\tUsage: @input devicehandle \"substring devicename match\" [skip_count]\r\n");
-          results.Append("\tUsage: @input devicehandle \"MIDI:substring devicename match\" [skip_count]\r\n");
-          results.Append("\tUsage: @input devicehandle \"OSC:1.2.3.4:port\"\r\n");
-          results.Append("\tUsage: @input devicehandle \"OSC:*:port\"\r\n");
+          results.Append("\tUsage: @input devicehandle MIDI \"substring devicename match\" [skip_count]\r\n");
+          results.Append("\tUsage: @input devicehandle OSC \"1.2.3.4:port\"\r\n");
+          results.Append("\tUsage: @input devicehandle OSC \"*:port\"\r\n");
         }
         else
         {
@@ -744,13 +745,10 @@ void scriptInstance::load_script(WDL_FastString &results)
           }
           else
           {
-            const char *dp = lp.gettoken_str(2);
-            if (!strnicmp(dp,"OSC:",4))
+            if (this_type==1) // OSC
             {
-              dp += 4;
-              while (*dp == ' ') dp++;
-
               char buf[512];
+              const char *dp=lp.gettoken_str(3);
               lstrcpyn_safe(buf,dp,sizeof(buf));
               char *portstr = strstr(buf,":");
               int port = 0;
@@ -813,15 +811,10 @@ void scriptInstance::load_script(WDL_FastString &results)
 
 
             }
-            else
+            else if (this_type==0) // MIDI
             {
-              if (!strnicmp(dp,"MIDI:",5))
-              {
-                dp += 5;
-                while (*dp == ' ') dp++;
-              }
-              const char *substr = dp;
-              int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
+              const char *substr = lp.gettoken_str(3);
+              int skipcnt = lp.getnumtokens()>=4 ? lp.gettoken_int(4) : 0;
 
               midiInputDevice *rec = new midiInputDevice(substr,skipcnt, &g_inputs);
               bool is_reuse=false;
@@ -856,7 +849,8 @@ void scriptInstance::load_script(WDL_FastString &results)
       }
       else if (!strcmp(tok,"@output"))
       {
-        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0])
+        int this_type;
+        if (lp.getnumtokens()<4 || !lp.gettoken_str(1)[0]||(this_type = lp.gettoken_enum(2,"MIDI\0OSC\0"))<0)
         {
           results.Append("\tUsage: @output devicehandle \"host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\r\n");
           results.Append("\tUsage: @output devicehandle \"OSC:host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\r\n");
@@ -870,13 +864,10 @@ void scriptInstance::load_script(WDL_FastString &results)
           }
           else
           {
-            const char *dp=lp.gettoken_str(2);
-            if (!strnicmp(dp,"MIDI:",5))
+            if (this_type == 0)
             {
-              dp += 5;
-              while (*dp == ' ') dp++;
-              const char *substr = dp;
-              int skipcnt = lp.getnumtokens()>=3 ? lp.gettoken_int(3) : 0;
+              const char *substr = lp.gettoken_str(3);
+              int skipcnt = lp.getnumtokens()>=4 ? lp.gettoken_int(4) : 0;
 
               bool is_reuse=false;
               midiOutputDevice *rec = new midiOutputDevice(substr,skipcnt, &g_outputs);
@@ -908,13 +899,9 @@ void scriptInstance::load_script(WDL_FastString &results)
 
 
             }
-            else
+            else if (this_type == 1)
             {
-              if (!strnicmp(dp,"OSC:",4)) 
-              {
-                dp+=4;
-                while (*dp == ' ') dp++;
-              }
+              const char *dp = lp.gettoken_str(3);
               oscOutputDevice *r = NULL;
               int x;
               bool is_reuse=false;
@@ -936,11 +923,11 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (!r) 
               {
                 is_reuse=false;
-                r = new oscOutputDevice(dp, lp.getnumtokens()>=4 ? lp.gettoken_int(3) : 0,
-                                            lp.getnumtokens()>=5 ? lp.gettoken_int(4) : -1);
+                r = new oscOutputDevice(dp, lp.getnumtokens()>4 ? lp.gettoken_int(4) : 0,
+                                            lp.getnumtokens()>5 ? lp.gettoken_int(5) : -1);
                 if (r->m_sendsock<0)
                 {
-                  results.AppendFormatted(1024,"\tWarning: failed creating destination for @output '%s' -> '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(2));
+                  results.AppendFormatted(1024,"\tWarning: failed creating destination for @output '%s' OSC '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(3));
                   delete r;
                   r=NULL;
                 }

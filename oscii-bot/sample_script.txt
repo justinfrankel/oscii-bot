@@ -1,9 +1,8 @@
 // @input lines:
 // usage: 
-//        @input devicenameforcode "substring match" [skip]
-//        @input devicenameforcode "MIDI:substring match" [skip]
-//        @input devicenameforcode "OSC:*:9000"
-//        @input devicenameforcode "OSC:192.168.1.2:9000"
+//        @input devicenameforcode MIDI "substring match" [skip]
+//        @input devicenameforcode OSC "*:9000"
+//        @input devicenameforcode OSC "192.168.1.2:9000"
 // can use any number of inputs. devicenameforcode must be unique, if you specify multiple @input lines
 // with common devicenameforcode, it will use the first successful line and ignore subsequent lines with that name
 // you can use any number of devices, too
@@ -13,9 +12,8 @@
 
 // @output lines:
 // usage: 
-//        @output devicenameforcode "127.0.0.1:8000" [maxpacketsize] [sleepamt]
-//        @output devicenameforcode "OSC:127.0.0.1:8000" [maxpacketsize] [sleepamt]
-//        @output devicenameforcode "MIDI:substring match" [skip]
+//        @output devicenameforcode OSC "127.0.0.1:8000" [maxpacketsize] [sleepamt]
+//        @output devicenameforcode MIDI "substring match" [skip]
  
 // maxpacketsize is 1024 by default, can lower or raise depending on network considerations
 // sleepamt is 10 by default, sleeps for this many milliseconds after each packet. can be 0 for no sleep.

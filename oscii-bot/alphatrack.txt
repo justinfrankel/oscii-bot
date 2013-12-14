@@ -1,10 +1,11 @@
 // generic REAPER<-->alphatrack OSC, for REAPER's Default.ReaperOSC
+// Only a basic volume fader works now, needs a lot more work
 
-@input osc_in "OSC:*:9000"
-@output osc_out "OSC:localhost:8000"
+@input osc_in OSC "*:9000"
+@output osc_out OSC "localhost:8000"
 
-@output midi_out "MIDI:AlphaTrack"
-@input midi_in "MIDI:AlphaTrack"
+@output midi_out MIDI "AlphaTrack"
+@input midi_in MIDI "AlphaTrack"
 
 @init
 
@@ -24,16 +25,16 @@ function set_vol_fader(vol) (
   midisend(midi_out);
 );
 
-oscmatch({/track/%d/*}) ? (
+oscmatch("/track/%d/*") ? (
   // fmt0 will have the affected track index
 
 
-  oscmatch({/track/%d/select}) ? (
+  oscmatch("/track/%d/select") ? (
     oscparm(0,0)>0 ? (
       track_index=fmt0;
       set_vol_fader(track_voltab[fmt0]);
     );
-  ) : oscmatch({/track/%d/volume}) ? (
+  ) : oscmatch("/track/%d/volume") ? (
     track_voltab[fmt0] = oscparm(0,0);
     fmt0 == track_index ? set_vol_fader(track_voltab[fmt0]);
   );
@@ -46,7 +47,7 @@ msg1 == 0xe0 ? (
   vol = (msg2 + msg3*128) / 16383;
   track_voltab[track_index] = vol;
   fmt0 = track_index;
-  oscsend(osc_out,{ /track/%d/volume }, vol);
+  oscsend(osc_out,"/track/%d/volume", vol);
   set_vol_fader(vol);
 );
 
