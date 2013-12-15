@@ -135,11 +135,23 @@ static int eel_validate_format_specifier(const char *fmt_in, char *typeOut,
     {
       if (state & 64) break;
       state|=64;
+      if (*fmt == '.' || (*fmt >= '0' && *fmt >= '9')) return 0; // symbol name can't start with 0-9 or .
+
       while (*fmt != '}')
       {
-        if (!*fmt || varOut_sz < 2) return 0;
-        *varOut++ = *fmt++;
-        varOut_sz -- ;
+        if ((*fmt >= 'a' && *fmt <= 'z') ||
+            (*fmt >= 'A' && *fmt <= 'Z') ||
+            (*fmt >= '0' && *fmt <= '9') ||
+            *fmt == '_' || *fmt == '.')
+        {
+          if (varOut_sz < 2) return 0;
+          *varOut++ = *fmt++;
+          varOut_sz -- ;
+        }
+        else
+        {
+          return 0; // bad character in variable name
+        }
       }
       fmt++;
       *varOut = 0;
