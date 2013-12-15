@@ -1204,6 +1204,13 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
   {
     case WM_INITDIALOG:
       // lParam = config file
+#ifdef _WIN32
+      {
+        HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
+        SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
+        systray_add(hwndDlg, 0, (HICON)icon, "Cockos OSCII-bot");
+      }
+#endif
       g_hwnd=hwndDlg;
       resize.init(hwndDlg);
       resize.init_item(IDC_EDIT1,0,0,1,1);
@@ -1247,12 +1254,6 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
 #endif
 
       {
-#ifdef _WIN32
-        HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
-        SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
-        systray_add(hwndDlg, 0, (HICON)icon, "Cockos OSCII-bot");
-#endif
-
         SendMessage(hwndDlg,WM_COMMAND,IDC_BUTTON1,0);
         SetTimer(hwndDlg,1,10,NULL);
         CheckDlgButton(hwndDlg,IDC_CHECK1,BST_CHECKED);
