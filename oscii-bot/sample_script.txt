@@ -7,7 +7,7 @@
 // with common devicenameforcode, it will use the first successful line and ignore subsequent lines with that name
 // you can use any number of devices, too
 
-@input r24 "ZOOM R"
+@input r24 MIDI "ZOOM R"
 
 
 // @output lines:
@@ -18,7 +18,7 @@
 // maxpacketsize is 1024 by default, can lower or raise depending on network considerations
 // sleepamt is 10 by default, sleeps for this many milliseconds after each packet. can be 0 for no sleep.
 
-@output localhost "127.0.0.1:8000"
+@output localhost OSC "127.0.0.1:8000"
 
 // code goes in one of @init, @timer, @oscmsg, or @midimsg sections
 
