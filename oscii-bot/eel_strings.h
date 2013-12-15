@@ -3,8 +3,8 @@
 
 // required for context
 // #define EEL_STRING_GET_FOR_INDEX(x, wr) ((classname *)opaque)->GetStringForIndex(x, wr)
-// #define EEL_STRING_GETFMTVAR(x) ((classname *)opaque)->GetVarForFormat(x)
 // #define EEL_STRING_ADDTOTABLE(x)  ((classname *)opaque)->AddString(x.Get())
+// optional - #define EEL_STRING_GETFMTVAR(x) ((classname *)opaque)->GetVarForFormat(x)
 // optional - #define EEL_STRING_GETNAMEDVAR(x,createOK) ((classname *)opaque)->GetNamedVar(x,createOK)
 
 
@@ -200,7 +200,9 @@ static int eel_format_strings(void *opaque, const char *fmt, char *buf, int buf_
       }
       else
       {
+#ifdef EEL_STRING_GETFMTVAR
         varptr = EEL_STRING_GETFMTVAR(fmt_parmpos++);
+#endif
       }
       const double v = varptr ? (double)*varptr : 0.0;
 
@@ -327,7 +329,9 @@ static int eel_string_match(void *opaque, const char *fmt, const char *msg, int 
             EEL_F *varOut = NULL;
             if (!dest_varname) 
             {
+#ifdef EEL_STRING_GETFMTVAR
               varOut = EEL_STRING_GETFMTVAR(match_fmt_pos++);
+#endif
             }
             else
             {
@@ -385,7 +389,9 @@ static int eel_string_match(void *opaque, const char *fmt, const char *msg, int 
             EEL_F *varOut = NULL;
             if (!dest_varname) 
             {
+#ifdef EEL_STRING_GETFMTVAR
               varOut = EEL_STRING_GETFMTVAR(match_fmt_pos-1);
+#endif
             }
             else
             {
