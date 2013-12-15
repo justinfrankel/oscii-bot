@@ -733,14 +733,13 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
       if (fmt)
       {
         int p = (int)*pos;
+        int insert_l = (int)strlen(fmt);
         if (p < 0) 
         {
-          if ((-p) >= strlen(fmt)) return *strOut;
-
-          fmt += -p;
+          insert_l += p; // decrease insert_l
+          fmt -= p; // advance fmt -- if fmt gets advanced past NULL term, insert_l will be < 0 anyway
           p=0;
         }
-        const int insert_l = (int)strlen(fmt);
 
         if (insert_l>0)
         {
@@ -749,11 +748,11 @@ static EEL_F NSEEL_CGEN_CALL _eel_strinsert(void *opaque, EEL_F *strOut, EEL_F *
 #ifdef EEL_STRING_DEBUGOUT
             EEL_STRING_DEBUGOUT("str_insert: will not grow string since it is already %d bytes",wr->GetLength());
 #endif
-            return *strOut;
           }
-          wr->Insert(fmt,p);
-
-          return *strOut;
+          else
+          {
+            wr->Insert(fmt,p);
+          }
         }
       }
       else
