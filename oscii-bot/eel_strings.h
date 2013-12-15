@@ -219,19 +219,11 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
         else
         {
           // greedy match
-          const char *oldmsg = msg;
-          while (*msg) msg++;
-          while (msg >= oldmsg)
-          {
-            if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
-            {
-              return true;
-            }
-            msg--;
-          }
-          return false;
+          int len = 0;
+          while (msg[len]) len++;
+          while (len >= 0 && !eel_string_match(opaque,fmt, msg+len,match_fmt_pos,ignorecase)) len--;
+          return len >= 0;
         }
-
       break;
       case '?':
         fmt++;
@@ -305,11 +297,7 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
 
             if (fmt_maxlen>0 && len > fmt_maxlen) len = fmt_maxlen;
 
-            while (len >= fmt_minlen)
-            {
-              if (eel_string_match(opaque,fmt, msg+len,match_fmt_pos+1,ignorecase)) break;
-              len--;
-            }
+            while (len >= fmt_minlen && !eel_string_match(opaque,fmt, msg+len,match_fmt_pos+1,ignorecase)) len--;
             if (len < fmt_minlen) return false;
 
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
