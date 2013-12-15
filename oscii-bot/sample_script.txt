@@ -50,6 +50,15 @@
 //   strlen(str);                          -- returns string length
 //   match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
 //   matchi("*test*", "this is a test")    -- search for first parameter regex-style in second parameter (case insensitive)
+                                          // note: for matching %d/%s/etc, you can specify min/max lengths:
+                                          // %s means 1 or more chars
+                                          // %0s means 0 or more chars
+                                          // %5s means exactly 5 chars
+                                          // %5-s means 5 or more chars
+                                          // %-10s means 1-10 chars
+                                          // %3-5s means 3-5 chars. 
+                                          // %0-5s means 0-5 chars. 
+
 //   strcpy(str, srcstr);                  -- replaces str with srcstr
 //   strcat(str, srcstr);                  -- appends srcstr to str 
 //   strncpy(str, srcstr, maxlen);         -- replaces str with srcstr, up to maxlen (-1 for unlimited)

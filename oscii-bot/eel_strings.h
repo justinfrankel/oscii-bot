@@ -15,6 +15,14 @@
    strlen(str);                          -- returns string length
    match("*test*", "this is a test")     -- search for first parameter regex-style in second parameter
    matchi("*test*", "this is a test")    -- search for first parameter regex-style in second parameter (case insensitive)
+          // %s means 1 or more chars
+          // %0s means 0 or more chars
+          // %5s means exactly 5 chars
+          // %5-s means 5 or more chars
+          // %-10s means 1-10 chars
+          // %3-5s means 3-5 chars. 
+          // %0-5s means 0-5 chars. 
+
    strcpy(str, srcstr);                  -- replaces str with srcstr
    strcat(str, srcstr);                  -- appends srcstr to str 
    strcmp(str, str2)                     -- compares strings
@@ -232,136 +240,110 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
       case '%':
         {
           fmt++;
-          int fmt_len_parm = 0;
-          while (*fmt >= '0' && *fmt <= '9')
+          unsigned short fmt_minlen = 1, fmt_maxlen = 0;
+          if (*fmt >= '0' && *fmt <= '9')
           {
-            fmt_len_parm *= 10;
-            fmt_len_parm += *fmt - '0';
-            fmt++;
+            fmt_minlen = *fmt++ - '0';
+            while (*fmt >= '0' && *fmt <= '9') fmt_minlen = fmt_minlen * 10 + (*fmt++ - '0');
+            fmt_maxlen = fmt_minlen;
           }
-          const char fmt_char = *fmt;
+          if (*fmt == '-')
+          {
+            fmt++;
+            fmt_maxlen = 0;
+            while (*fmt >= '0' && *fmt <= '9') fmt_maxlen = fmt_maxlen * 10 + (*fmt++ - '0');
+          }
+          const char fmt_char = *fmt++;
           if (!fmt_char) return false; // malformed
-
-          fmt++;
 
           if (fmt_char == '*' || 
               fmt_char == '?' || 
               fmt_char == '+' || 
               fmt_char == '%')
           {
-            if (*msg != fmt_char) return false;
-            msg++;
-          }
-          else if (fmt_char == 's')
-          {
-            match_fmt_pos++;
-            // search for a string of min length fmt_len_parm
-            const char *oldmsg = msg;
-
-            if (fmt[0] == '?')
-            {
-              // %s? is lazy mode
-              fmt++;
-              if ((int)strlen(msg) >= fmt_len_parm)
-              {
-                msg += fmt_len_parm;
-                while (*msg)
-                {
-                  if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase)) goto got_string_match;
-                  msg++;
-                }
-              }
-            }
-            else
-            {
-              // default to greedy mode
-              while (*msg) msg++;
-
-              while (msg >= oldmsg + fmt_len_parm)
-              {
-                if (eel_string_match(opaque,fmt, msg,match_fmt_pos,ignorecase))
-                {
-got_string_match:
-                  EEL_F *var = EEL_STRING_GETFMTVAR(match_fmt_pos-1);
-                  if (var)
-                  {
-                    EEL_STRING_STORAGECLASS *wr=NULL;
-                    EEL_STRING_GET_FOR_INDEX(*var,&wr);
-                    if (wr) 
-                    {
-                      if (msg > oldmsg) wr->Set(oldmsg,(int) (msg-oldmsg));
-                      else wr->Set("");
-                    }
-                  }
-                  return true;
-                }
-                msg--;
-              }
-            }
-            return false;
+            if (*msg++ != fmt_char) return false;
           }
           else if (fmt_char == 'c')
           {
-            if (!msg[0]) return false;
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
-            if (varOut) *varOut = (EEL_F)msg[0];
+            const unsigned char c =  *(unsigned char *)msg++;
+            if (varOut) *varOut = (EEL_F)c;
+            if (!c) return false;
             match_fmt_pos++;
-            msg++;
           }
-          else if (fmt_char == 'd' || fmt_char == 'u')
+          else 
           {
             int len=0;
-            while (msg[len] >= '0' && msg[len] <= '9') len++;
-            if (!len) return false;
-
-            EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
-            if (varOut)
+            if (fmt_char == 's')
             {
-              char *bl=(char*)msg;
-              if (fmt_char == 'd') 
-                *varOut = (EEL_F)atoi(msg);
-              else
-                *varOut = (EEL_F)strtoul(msg,&bl,10);
+              while (msg[len]) len++;
             }
-            match_fmt_pos++;
-
-            msg+=len;
-          }
-          else if (fmt_char == 'x' || fmt_char == 'X')
-          {
-            int len=0;
-            while ((msg[len] >= '0' && msg[len] <= '9') ||
-                   (msg[len] >= 'A' && msg[len] <= 'F') ||
-                   (msg[len] >= 'a' && msg[len] <= 'f')
-                   ) len++;
-            if (!len) return false;
-
-            EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
-            if (varOut)
+            else if (fmt_char == 'x' || fmt_char == 'X')
             {
-              char *bl=(char*)msg;
-              *varOut = (EEL_F)strtoul(msg,&bl,16);
+              while ((msg[len] >= '0' && msg[len] <= '9') ||
+                     (msg[len] >= 'A' && msg[len] <= 'F') ||
+                     (msg[len] >= 'a' && msg[len] <= 'f')) len++;
             }
-            match_fmt_pos++;
-            msg+=len;
-          }
-          else if (fmt_char == 'f')
-          {
-            int len=0;
-            while (msg[len] >= '0' && msg[len] <= '9') len++;
-            if (msg[len] == '.') 
-            { 
-              len++; 
+            else if (fmt_char == 'f')
+            {
+              while (msg[len] >= '0' && msg[len] <= '9') len++;
+              if (msg[len] == '.') 
+              { 
+                len++; 
+                while (msg[len] >= '0' && msg[len] <= '9') len++;
+              }
+            }
+            else if (fmt_char == 'd' || fmt_char == 'u')
+            {
               while (msg[len] >= '0' && msg[len] <= '9') len++;
             }
-            if (!len) return false;
+            else 
+            {
+              // bad format
+              return false;
+            }
+
+            if (fmt_maxlen>0 && len > fmt_maxlen) len = fmt_maxlen;
+
+            while (len >= fmt_minlen)
+            {
+              if (eel_string_match(opaque,fmt, msg+len,match_fmt_pos+1,ignorecase)) break;
+              len--;
+            }
+            if (len < fmt_minlen) return false;
 
             EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
             if (varOut)
-              *varOut = (EEL_F)atof(msg);
-            match_fmt_pos++;
-
-            msg+=len;
+            {
+              if (fmt_char == 's')
+              {
+                EEL_STRING_STORAGECLASS *wr=NULL;
+                EEL_STRING_GET_FOR_INDEX(*varOut, &wr);
+                if (wr)
+                {
+                  wr->Set(msg,len);
+                }
+                else
+                {
+#ifdef EEL_STRING_DEBUGOUT
+                   EEL_STRING_DEBUGOUT("match: bad destination specifier passed as %d: %f",match_fmt_pos,*varOut);
+#endif
+                }
+              }
+              else
+              {
+                char tmp[128];
+                lstrcpyn(tmp,msg,min(len+1,sizeof(tmp)));
+                char *bl=(char*)msg;
+                if (fmt_char == 'u')
+                  *varOut = (EEL_F)strtoul(tmp,&bl,10);
+                else if (fmt_char == 'x' || fmt_char == 'X')
+                  *varOut = (EEL_F)strtoul(msg,&bl,16);
+                else
+                  *varOut = (EEL_F)atof(tmp);
+              }
+            }
+            return true;
           }
         }
       break;
