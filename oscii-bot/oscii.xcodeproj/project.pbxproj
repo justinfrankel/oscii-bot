@@ -61,7 +61,7 @@
 /* Begin PBXFileReference section */
 		3343A567185B72970026507E /* OSCII-bot.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = "OSCII-bot.icns"; sourceTree = "<group>"; };
 		3385932C185B555500FDFFEA /* wndsize.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = wndsize.cpp; path = ../../WDL/wingui/wndsize.cpp; sourceTree = "<group>"; };
-		33AA3112185A7E8D001D767E /* oscii.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; name = oscii.app; path = "OSCII-bot.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		33AA3112185A7E8D001D767E /* OSCII-bot.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "OSCII-bot.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		33AA3115185A7E8D001D767E /* Cocoa.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Cocoa.framework; path = System/Library/Frameworks/Cocoa.framework; sourceTree = SDKROOT; };
 		33AA3118185A7E8D001D767E /* AppKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AppKit.framework; path = System/Library/Frameworks/AppKit.framework; sourceTree = SDKROOT; };
 		33AA3119185A7E8D001D767E /* CoreData.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreData.framework; path = System/Library/Frameworks/CoreData.framework; sourceTree = SDKROOT; };
@@ -144,7 +144,7 @@
 		33AA3113185A7E8D001D767E /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				33AA3112185A7E8D001D767E /* oscii.app */,
+				33AA3112185A7E8D001D767E /* OSCII-bot.app */,
 				33AA3133185A7E8D001D767E /* osciiTests.xctest */,
 			);
 			name = Products;
@@ -288,7 +288,7 @@
 			);
 			name = "OSCII-bot";
 			productName = oscii;
-			productReference = 33AA3112185A7E8D001D767E /* oscii.app */;
+			productReference = 33AA3112185A7E8D001D767E /* OSCII-bot.app */;
 			productType = "com.apple.product-type.application";
 		};
 		33AA3132185A7E8D001D767E /* osciiTests */ = {
@@ -457,6 +457,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++98";
 				CLANG_CXX_LIBRARY = "libstdc++";
 				CLANG_ENABLE_OBJC_ARC = NO;
@@ -495,6 +496,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++98";
 				CLANG_CXX_LIBRARY = "libstdc++";
 				CLANG_ENABLE_OBJC_ARC = NO;

@@ -996,9 +996,6 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   fclose(fp);
 
-  if (!m_in_devs.GetSize()) results.Append("\tWarning: No @input specified\r\n");
-  if (!m_out_devs.GetSize()) results.Append("\tWarning: No @output specified\r\n");
-
   results.AppendFormatted(512,"\t%d inputs, %d outputs, %d strings\r\n\r\n",
       m_in_devs.GetSize(),m_out_devs.GetSize(),m_strings.GetSize());
 
