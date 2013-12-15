@@ -74,7 +74,7 @@ class scriptInstance
       m_debugOut=0;
       m_in_devs.Empty();
       m_out_devs.Empty();
-      m_strings.Empty(true,free);
+      m_strings.Empty(true);
       int x;
       for (x=0;x<MAX_USER_STRINGS;x++) if (m_rw_strings[x]) m_rw_strings[x]->Set("");
 
@@ -183,7 +183,7 @@ class scriptInstance
     
     WDL_FastString *m_rw_strings[MAX_USER_STRINGS];
 
-    WDL_PtrList<char> m_strings;
+    WDL_PtrList<WDL_FastString> m_strings;
     
     void DebugOutput(const char *fmt, ...)
     {
@@ -197,18 +197,17 @@ class scriptInstance
       va_end(arglist);
     }
 
-    int AddString(const char *str)
+    int AddString(const WDL_FastString &s)
     {
-      const int n = m_strings.GetSize();
-      int x;
-      for (x=0;x<n && strcmp(m_strings.Get(x),str);x++);
-      if (x==n) m_strings.Add(strdup(str));
-      return x+STRING_INDEX_BASE;
+      WDL_FastString *ns = new WDL_FastString;
+      *ns = s; // binary copy
+      m_strings.Add(ns);
+      return m_strings.GetSize()-1+STRING_INDEX_BASE;
     }
 
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)
     {
-      int idx = (int) (val+0.5);
+      const int idx = (int) (val+0.5);
       if (idx>=0 && idx < MAX_USER_STRINGS)
       {
         if (isWriteableAs)
@@ -224,7 +223,13 @@ class scriptInstance
       if (idx == OSC_CURMSG_STRING)
         return m_cur_oscmsg ? m_cur_oscmsg->GetMessage() : NULL;
 
-      return m_strings.Get(idx - STRING_INDEX_BASE);
+      WDL_FastString *s = m_strings.Get(idx - STRING_INDEX_BASE);
+      if (s)
+      {
+        if (isWriteableAs) *isWriteableAs=s;
+        return s->Get();
+      }
+      return NULL;
     }
 
     enum { MAX_OSC_FMTS=32 };
@@ -268,7 +273,7 @@ class scriptInstance
 #define EEL_STRING_GETNAMEDVAR(x,y) ((scriptInstance*)(opaque))->GetNamedVar(x,y)
 #define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
 #define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
-#define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x.Get())
+#define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x)
 
 #define EEL_STRING_DEBUGOUT ((scriptInstance*)(opaque))->DebugOutput // no parameters, since it takes varargs
 #define EEL_STRING_STDOUT_WRITE(x) ((scriptInstance*)(opaque))->WriteOutput(x) 
