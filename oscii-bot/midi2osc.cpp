@@ -273,7 +273,7 @@ class scriptInstance
 #define EEL_STRING_DEBUGOUT ((scriptInstance*)(opaque))->DebugOutput // no parameters, since it takes varargs
 #define EEL_STRING_STDOUT_WRITE(x) ((scriptInstance*)(opaque))->WriteOutput(x) 
 
-#include "eel_strings.h"
+#include "../WDL/eel2/eel_strings.h"
 
 
 WDL_PtrList<scriptInstance> g_scripts;
