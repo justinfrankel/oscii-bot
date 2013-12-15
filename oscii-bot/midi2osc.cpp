@@ -15,6 +15,7 @@
 #include "../WDL/wdlcstring.h"
 #include "../WDL/dirscan.h"
 #include "../WDL/queue.h"
+#include "../WDL/assocarray.h"
 #include "../WDL/mutex.h"
 #include "../WDL/lineparse.h"
 #include "../WDL/wingui/wndsize.h"
@@ -48,7 +49,7 @@ WDL_PtrList<char> g_script_load_filenames, g_script_load_paths;
 class scriptInstance 
 {
   public:
-    scriptInstance(const char *fn, WDL_FastString &results) 
+    scriptInstance(const char *fn, WDL_FastString &results)  : m_namedvars(false)
     { 
       m_debugOut=0;
       m_fn.Set(fn);
@@ -91,6 +92,7 @@ class scriptInstance
       m_var_time = 0;
       memset(m_var_msgs,0,sizeof(m_var_msgs));
       memset(m_var_fmt,0,sizeof(m_var_fmt));
+      m_namedvars.DeleteAll();
     }
 
     void start(WDL_FastString &results)
@@ -227,10 +229,27 @@ class scriptInstance
 
     enum { MAX_OSC_FMTS=32 };
 
+    EEL_F *GetNamedVar(const char *s, bool createIfNotExists)
+    {
+      if (!*s) return NULL;
+      EEL_F *r = m_namedvars.Get(s);
+      if (r || !createIfNotExists) return r;
+      r=NSEEL_VM_regvar(m_vm,s);
+      if (r) m_namedvars.Insert(s,r);
+      return r;
+    }
+
     EEL_F *GetVarForFormat(int formatidx)
     {
       if (formatidx>=0 && formatidx<MAX_OSC_FMTS) return m_var_fmt[formatidx];
       return NULL;
+    }
+
+    WDL_StringKeyedArray<EEL_F *> m_namedvars;
+    static int varEnumProc(const char *name, EEL_F *val, void *ctx)
+    {
+      ((scriptInstance *)ctx)->m_namedvars.AddUnsorted(name,val);
+      return 1;
     }
 
     EEL_F *m_var_time, *m_var_msgs[5], *m_var_fmt[MAX_OSC_FMTS];
@@ -246,6 +265,7 @@ class scriptInstance
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, EEL_F *fmt);
 };
 
+#define EEL_STRING_GETNAMEDVAR(x,y) ((scriptInstance*)(opaque))->GetNamedVar(x,y)
 #define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
 #define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
 #define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x.Get())
@@ -998,6 +1018,11 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   results.AppendFormatted(512,"\t%d inputs, %d outputs, %d strings\r\n\r\n",
       m_in_devs.GetSize(),m_out_devs.GetSize(),m_strings.GetSize());
+
+  m_namedvars.DeleteAll();
+
+  NSEEL_VM_enumallvars(m_vm,varEnumProc, this);
+  m_namedvars.Resort();
 
 }
 

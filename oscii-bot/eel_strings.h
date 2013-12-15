@@ -2,9 +2,10 @@
 #define __EEL__STRINGS_H__
 
 // required for context
-// #define EEL_STRING_GET_FOR_INDEX(x, wr) _this->GetStringForIndex(x, wr)
-// #define EEL_STRING_GETFMTVAR(x) _this->GetVarForFormat(x)
-// #define EEL_STRING_ADDTOTABLE(x)  _this->AddString(x.Get())
+// #define EEL_STRING_GET_FOR_INDEX(x, wr) ((classname *)opaque)->GetStringForIndex(x, wr)
+// #define EEL_STRING_GETFMTVAR(x) ((classname *)opaque)->GetVarForFormat(x)
+// #define EEL_STRING_ADDTOTABLE(x)  ((classname *)opaque)->AddString(x.Get())
+// optional - #define EEL_STRING_GETNAMEDVAR(x,createOK) ((classname *)opaque)->GetNamedVar(x,createOK)
 
 
 /*
@@ -72,55 +73,90 @@ also recommended, for the PHP fans:
 #define EEL_STRING_STORAGECLASS WDL_FastString
 #endif
 
-static int eel_validate_format_specifier(const char *fmt_in, char *typeOut)
+static int eel_validate_format_specifier(const char *fmt_in, char *typeOut, 
+                                         char *fmtOut, int fmtOut_sz, 
+                                         char *varOut, int varOut_sz, 
+                                         int *varOut_used
+                                         )
 {
   const char *fmt = fmt_in+1;
   int state=0;
   if (fmt_in[0] != '%') return 0; // ugh passed a non-specifier
+
+  *varOut_used = 0;
+  *varOut = 0;
+
+  if (fmtOut_sz-- < 2) return 0;
+  *fmtOut++ = '%';
+
   while (*fmt)
   {
     const char c = *fmt++;
-    if (c == 'f'|| c=='e' || c=='E' || c=='g' || c=='G' || c == 'd' || c == 'u' || c == 'x' || c == 'X' || c == 'c' || c =='s' || c=='S') 
-    {     
-      if (typeOut) *typeOut = c;
+    if (fmtOut_sz < 2) return 0;
+
+    if (c == 'f'|| c=='e' || c=='E' || c=='g' || c=='G' || c == 'd' || c == 'u' || 
+        c == 'x' || c == 'X' || c == 'c' || c =='s' || c=='S') 
+    {
+      *typeOut = c;
+      fmtOut[0] = c;
+      fmtOut[1] = 0;
       return (int) (fmt - fmt_in);
     }
     else if (c == '.') 
     {
-      if (state&2) break;
+      *fmtOut++ = c; fmtOut_sz--;
+      if (state&(2|64)) break;
       state |= 2;
     }
     else if (c == '+') 
     {
-      if (state&(32|16|8|4)) break;
+      *fmtOut++ = c; fmtOut_sz--;
+      if (state&(64|32|16|8|4)) break;
       state |= 8;
     }
     else if (c == '-') 
     {
-      if (state&(32|16|8|4)) break;
+      *fmtOut++ = c; fmtOut_sz--;
+      if (state&(64|32|16|8|4)) break;
       state |= 16;
     }
     else if (c == ' ') 
     {
-      if (state&(32|16|8|4)) break;
+      *fmtOut++ = c; fmtOut_sz--;
+      if (state&(64|32|16|8|4)) break;
       state |= 32;
     }
     else if (c >= '0' && c <= '9') 
     {
+      *fmtOut++ = c; fmtOut_sz--;
       state|=4;
     }
-    else 
+    else if (c == '{')
     {
-      break; // %unknown-char
+      if (state & 64) break;
+      state|=64;
+      while (*fmt != '}')
+      {
+        if (!*fmt || varOut_sz < 2) return 0;
+        *varOut++ = *fmt++;
+        varOut_sz -- ;
+      }
+      fmt++;
+      *varOut = 0;
+      *varOut_used=1;
+    }
+    else
+    {
+      break;
     }
   }
   return 0;
 
 }
 
-static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf_sz)
+static int eel_format_strings(void *opaque, const char *fmt, char *buf, int buf_sz)
 {
-  bool rv=true;
+  int rv=1;
   int fmt_parmpos = 0;
   char *op = buf;
   while (*fmt && op < buf+buf_sz-128)
@@ -133,18 +169,28 @@ static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf
     else if (fmt[0] == '%')
     {
       char ct=0;
-      const int l=eel_validate_format_specifier(fmt,&ct);
       char fs[128];
+      char varname[128];
+      int varname_used=0;
+      const int l=eel_validate_format_specifier(fmt,&ct,fs,sizeof(fs),varname,sizeof(varname),&varname_used);
       if (!l || !ct || l >= sizeof(fs)) 
       {
-        rv=false;
+        rv=0;
         break;
       }
-      lstrcpyn(fs,fmt,l+1);
 
-      const EEL_F *varptr = EEL_STRING_GETFMTVAR(fmt_parmpos);
+      const EEL_F *varptr = NULL;
+      if (varname_used)
+      {
+#ifdef EEL_STRING_GETNAMEDVAR
+        if (varname[0]) varptr=EEL_STRING_GETNAMEDVAR(varname,0);
+#endif
+      }
+      else
+      {
+        varptr = EEL_STRING_GETFMTVAR(fmt_parmpos++);
+      }
       const double v = varptr ? (double)*varptr : 0.0;
-      fmt_parmpos++;
 
       if (ct == 's' || ct=='S')
       {
@@ -180,7 +226,7 @@ static bool eel_format_strings(void *opaque, const char *fmt, char *buf, int buf
 
 
 
-static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int match_fmt_pos, bool ignorecase)
+static int eel_string_match(void *opaque, const char *fmt, const char *msg, int match_fmt_pos, int ignorecase)
 {
   // check for match, updating EEL_STRING_GETFMTVAR(*) as necessary
   // %d=12345
@@ -191,12 +237,12 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
   // * ? +  match minimal groups of 0+,1, or 1+ chars
   for (;;)
   {
-    if (!*fmt && !*msg) return true;
+    if (!*fmt && !*msg) return 1;
 
-    if (!*fmt) return false; // format ends before matching string
+    if (!*fmt) return 0; // format ends before matching string
 
-    // if string ends and format is not on a wildcard, early-out to false
-    if (!*msg && *fmt != '*') return false;
+    // if string ends and format is not on a wildcard, early-out to 0
+    if (!*msg && *fmt != '*') return 0;
 
     switch (*fmt)
     {
@@ -245,23 +291,45 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
             fmt_maxlen = 0;
             while (*fmt >= '0' && *fmt <= '9') fmt_maxlen = fmt_maxlen * 10 + (*fmt++ - '0');
           }
+          const char *dest_varname=NULL;
+          if (*fmt == '{')
+          {
+            dest_varname=++fmt;
+            while (*fmt && *fmt != '}') fmt++;
+            if (*fmt != '}') return 0; // malformed %{var}s
+            fmt++; // skip '}'
+          }
+
           const char fmt_char = *fmt++;
-          if (!fmt_char) return false; // malformed
+          if (!fmt_char) return 0; // malformed
 
           if (fmt_char == '*' || 
               fmt_char == '?' || 
               fmt_char == '+' || 
               fmt_char == '%')
           {
-            if (*msg++ != fmt_char) return false;
+            if (*msg++ != fmt_char) return 0;
           }
           else if (fmt_char == 'c')
           {
-            EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
+            EEL_F *varOut = NULL;
+            if (!dest_varname) 
+            {
+              varOut = EEL_STRING_GETFMTVAR(match_fmt_pos++);
+            }
+            else
+            {
+#ifdef EEL_STRING_GETNAMEDVAR 
+              char tmp[128];
+              int idx=0;
+              while (*dest_varname  && *dest_varname != '}' && idx<sizeof(tmp)-1) tmp[idx++] = *dest_varname++;
+              tmp[idx]=0;
+              if (idx>0) varOut = EEL_STRING_GETNAMEDVAR(tmp,1);
+#endif
+            }
             const unsigned char c =  *(unsigned char *)msg++;
             if (varOut) *varOut = (EEL_F)c;
-            if (!c) return false;
-            match_fmt_pos++;
+            if (!c) return 0;
           }
           else 
           {
@@ -292,15 +360,31 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
             else 
             {
               // bad format
-              return false;
+              return 0;
             }
 
             if (fmt_maxlen>0 && len > fmt_maxlen) len = fmt_maxlen;
 
-            while (len >= fmt_minlen && !eel_string_match(opaque,fmt, msg+len,match_fmt_pos+1,ignorecase)) len--;
-            if (len < fmt_minlen) return false;
+            if (!dest_varname) match_fmt_pos++;
 
-            EEL_F *varOut = EEL_STRING_GETFMTVAR(match_fmt_pos);
+            while (len >= fmt_minlen && !eel_string_match(opaque,fmt, msg+len,match_fmt_pos,ignorecase)) len--;
+            if (len < fmt_minlen) return 0;
+
+            EEL_F *varOut = NULL;
+            if (!dest_varname) 
+            {
+              varOut = EEL_STRING_GETFMTVAR(match_fmt_pos-1);
+            }
+            else
+            {
+#ifdef EEL_STRING_GETNAMEDVAR 
+              char tmp[128];
+              int idx=0;
+              while (*dest_varname  && *dest_varname != '}' && idx<sizeof(tmp)-1) tmp[idx++] = *dest_varname++;
+              tmp[idx]=0;
+              if (idx>0) varOut = EEL_STRING_GETNAMEDVAR(tmp,1);
+#endif
+            }
             if (varOut)
             {
               if (fmt_char == 's')
@@ -331,12 +415,12 @@ static bool eel_string_match(void *opaque, const char *fmt, const char *msg, int
                   *varOut = (EEL_F)atof(tmp);
               }
             }
-            return true;
+            return 1;
           }
         }
       break;
       default:
-        if (ignorecase ? (toupper(*fmt) != toupper(*msg)) : (*fmt!= *msg)) return false;
+        if (ignorecase ? (toupper(*fmt) != toupper(*msg)) : (*fmt!= *msg)) return 0;
         fmt++;
         msg++;
       break;
@@ -781,7 +865,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_match(void *opaque, EEL_F *fmt_index, EEL_F *v
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
     const char *msg = EEL_STRING_GET_FOR_INDEX(*value_index,NULL);
 
-    if (fmt && msg) return eel_string_match(opaque,fmt,msg,0,false) ? 1.0 : 0.0;
+    if (fmt && msg) return eel_string_match(opaque,fmt,msg,0,0) ? 1.0 : 0.0;
   }
   return 0.0;
 }
@@ -792,7 +876,7 @@ static EEL_F NSEEL_CGEN_CALL _eel_matchi(void *opaque, EEL_F *fmt_index, EEL_F *
     const char *fmt = EEL_STRING_GET_FOR_INDEX(*fmt_index,NULL);
     const char *msg = EEL_STRING_GET_FOR_INDEX(*value_index,NULL);
 
-    if (fmt && msg) return eel_string_match(opaque,fmt,msg,0,true) ? 1.0 : 0.0;
+    if (fmt && msg) return eel_string_match(opaque,fmt,msg,0,1) ? 1.0 : 0.0;
   }
   return 0.0;
 }
