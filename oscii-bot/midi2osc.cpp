@@ -1,6 +1,8 @@
-// OSCII v0.2
+// OSCII-bot
 // Copyright (C) 2013 Cockos Incorporated
 // License: GPL
+
+#define OSCIIBOT_VERSION "0.2"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -1345,13 +1347,15 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
   {
     case WM_INITDIALOG:
       // lParam = config file
-#ifdef _WIN32
       {
+        const char *vs="Cockos OSCII-bot v" OSCIIBOT_VERSION ;
+#ifdef _WIN32
         HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
         SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
-        systray_add(hwndDlg, 0, (HICON)icon, "Cockos OSCII-bot");
-      }
+        systray_add(hwndDlg, 0, (HICON)icon, (char*)vs);
 #endif
+        SetWindowText(hwndDlg,vs);
+      }
       g_hwnd=hwndDlg;
       resize.init(hwndDlg);
       resize.init_item(IDC_EDIT1,0,0,1,1);

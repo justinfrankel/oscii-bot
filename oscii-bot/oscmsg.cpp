@@ -1,3 +1,8 @@
+// OSCII-bot
+// Copyright (C) 2013 Cockos Incorporated
+// License: GPL
+
+
 #ifdef _WIN32
 #include <windows.h>
 #endif

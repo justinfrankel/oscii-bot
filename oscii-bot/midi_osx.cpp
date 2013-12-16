@@ -1,3 +1,7 @@
+// OSCII-bot
+// Copyright (C) 2013 Cockos Incorporated
+// License: GPL
+
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>

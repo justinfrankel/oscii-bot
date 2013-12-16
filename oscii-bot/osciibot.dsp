@@ -95,6 +95,14 @@ LINK32=link.exe
 # PROP Default_Filter ""
 # Begin Source File
 
+SOURCE=..\WDL\eel2\eel_files.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\eel2\eel_strings.h
+# End Source File
+# Begin Source File
+
 SOURCE="..\WDL\eel2\nseel-caltab.c"
 # End Source File
 # Begin Source File
@@ -133,10 +141,6 @@ SOURCE=..\WDL\jnetlib\util.cpp
 # Begin Source File
 
 SOURCE=.\device.h
-# End Source File
-# Begin Source File
-
-SOURCE=.\eel_strings.h
 # End Source File
 # Begin Source File
 

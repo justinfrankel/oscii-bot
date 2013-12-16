@@ -1,3 +1,7 @@
+// OSCII-bot
+// Copyright (C) 2013 Cockos Incorporated
+// License: GPL
+
 #ifndef _M2O_OSCMSG_H_
 #define _M2O_OSCMSG_H_
 
