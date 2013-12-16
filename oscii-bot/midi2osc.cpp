@@ -276,7 +276,7 @@ class scriptInstance
 #define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x)
 
 #define EEL_STRING_DEBUGOUT ((scriptInstance*)(opaque))->DebugOutput // no parameters, since it takes varargs
-#define EEL_STRING_STDOUT_WRITE(x) ((scriptInstance*)(opaque))->WriteOutput(x) 
+#define EEL_STRING_STDOUT_WRITE(x,len) ((scriptInstance*)(opaque))->WriteOutput(x) 
 
 #include "../WDL/eel2/eel_strings.h"
 
@@ -618,12 +618,13 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
   scriptInstance *_this = (scriptInstance*)opaque;
   if (_this && _this->m_cur_oscmsg)
   {
-    const char *fmt = _this->GetStringForIndex(*fmt_index);
+    WDL_FastString *fmt_wr=NULL;
+    const char *fmt = _this->GetStringForIndex(*fmt_index,&fmt_wr);
     if (fmt)
     {
       const char *msg = _this->m_cur_oscmsg->GetMessage();
 
-      if (msg) return eel_string_match(opaque,fmt,msg,0,true) ? 1.0 : 0.0;
+      if (msg) return eel_string_match(opaque,fmt,msg,0,true,fmt + (fmt_wr ? fmt_wr->GetLength() : strlen(fmt)),msg+strlen(msg)) ? 1.0 : 0.0;
     }
   }
   return 0.0;
