@@ -31,9 +31,29 @@
 
 HINSTANCE g_hInstance;
 
+#ifdef _WIN32
 #define WM_SYSTRAY              WM_USER + 0x200
 BOOL systray_add(HWND hwnd, UINT uID, HICON hIcon, LPSTR lpszTip);
 BOOL systray_del(HWND hwnd, UINT uID);
+
+static void GetShellPath(WDL_FastString *so, const char *name)
+{
+  HKEY k;
+  if (RegOpenKeyEx(HKEY_CURRENT_USER,"SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Explorer\\Shell Folders",0,KEY_READ,&k) == ERROR_SUCCESS)
+  {
+    char path[4096];
+    DWORD b=sizeof(path);
+    DWORD t=REG_SZ;
+    path[0]=0;
+    if (RegQueryValueEx(k,name,0,&t,(unsigned char *)path,&b) == ERROR_SUCCESS && t == REG_SZ)
+    {
+      so->Set(path);
+    }
+    RegCloseKey(k);
+  }
+}
+
+#endif
 
 
 int g_recent_events[4];
@@ -49,8 +69,21 @@ WDL_PtrList<char> g_script_load_filenames, g_script_load_paths;
 class scriptInstance 
 {
   public:
+  
+  enum {
+    MAX_FILE_HANDLES=128,
+    MAX_USER_STRINGS=1024,  // 0...1023
+    OSC_CURMSG_STRING=8000,
+    STRING_INDEX_BASE=9000, // 9000...9000+however many used
+    
+    INPUT_INDEX_BASE =0x400000,
+    OUTPUT_INDEX_BASE=0x500000,
+    FILE_HANDLE_INDEX_BASE=0x600000
+  };
+  
     scriptInstance(const char *fn, WDL_FastString &results)  : m_namedvars(false)
     { 
+      memset(m_handles,0,sizeof(m_handles));
       m_debugOut=0;
       m_fn.Set(fn);
       m_vm=0;
@@ -66,6 +99,11 @@ class scriptInstance
       clear();
       int x;
       for (x=0;x<MAX_USER_STRINGS;x++) delete m_rw_strings[x];
+      for (x=0;x<MAX_FILE_HANDLES;x++) 
+      {
+        if (m_handles[x]) fclose(m_handles[x]); 
+        m_handles[x]=0;
+      }
     }
 
     void load_script(WDL_FastString &results);
@@ -147,6 +185,81 @@ class scriptInstance
       }
     }
 
+    FILE *m_handles[MAX_FILE_HANDLES];
+    EEL_F OpenFile(const char *fn, const char *mode)
+    {
+      if (!*fn || !*mode) return -1.0;
+
+      int x;
+      for (x=0;x<MAX_FILE_HANDLES && m_handles[x];x++);
+      if (x>= MAX_FILE_HANDLES) 
+      {
+        DebugOutput("fopen(): no free file handles");
+        return -1.0;
+      }
+
+      WDL_FastString tmp;
+      if (!strncmp(fn,"~/",2))
+      {
+#ifdef _WIN32
+        // win32 "home" sucks, so just go to desktop
+        GetShellPath(&tmp,"Desktop");
+        if (tmp.Get()[0]) { tmp.Append("\\"); tmp.Append(fn+2); }
+#else
+        char *h = getenv("HOME");
+        if (h && *h) { tmp.Set(h); tmp.Append("/"); tmp.Append(fn+2); }
+#endif
+      }
+      else if (!strncmp(fn,"@/",2))
+      {
+#ifdef _WIN32
+        GetShellPath(&tmp,"Desktop");
+        if (tmp.Get()[0]) { tmp.Append("\\"); tmp.Append(fn+2); }
+#else
+        char *h = getenv("HOME");
+        if (h && *h) { tmp.Set(h); tmp.Append("/Desktop/"); tmp.Append(fn+2); }
+#endif
+      }
+      else if (!strncmp(fn,"^/",2))
+      {
+        tmp.Set(m_fn.Get());
+        int idx=tmp.GetLength();
+        while (idx>=0 && tmp.Get()[idx] != '\\' && tmp.Get()[idx] != '/') idx--;
+        if (idx>=0)
+        {
+          tmp.SetLen(idx+1);
+          tmp.Append(fn+2);
+        }
+      }
+
+      FILE *fp = fopen(tmp.Get()[0] ? tmp.Get():fn,mode);
+      if (!fp) 
+      {
+        DebugOutput("fopen(): Failed opening file %s(\"%s\")",tmp.Get(),mode);
+        return -1.0;
+      }
+      m_handles[x]=fp;
+      return x + FILE_HANDLE_INDEX_BASE;
+    }
+    EEL_F CloseFile(int fp_idx)
+    {
+      fp_idx-=FILE_HANDLE_INDEX_BASE;
+      if (fp_idx>=0 && fp_idx<MAX_FILE_HANDLES && m_handles[fp_idx])
+      {
+        fclose(m_handles[fp_idx]);
+        m_handles[fp_idx]=0;
+        return 0.0;
+      }
+      return -1.0;
+    }
+    FILE *GetFileFP(int fp_idx)
+    {
+      fp_idx-=FILE_HANDLE_INDEX_BASE;
+      if (fp_idx>=0 && fp_idx<MAX_FILE_HANDLES) return m_handles[fp_idx];
+      return NULL;
+    }
+
+
     void compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs);
     bool run(double curtime, WDL_FastString &results);
     static void messageCallback(void *d1, void *d2, char type, int msglen, void *msg);
@@ -170,15 +283,6 @@ class scriptInstance
     WDL_HeapBuf m_incoming_events;  // incomingEvent list, each is 8-byte aligned
     WDL_Mutex m_incoming_events_mutex;
 
-
-    enum {
-        MAX_USER_STRINGS=1024,  // 0...1023
-        OSC_CURMSG_STRING=8000,
-        STRING_INDEX_BASE=9000, // 9000...9000+however many used
-
-        INPUT_INDEX_BASE =0x400000,
-        OUTPUT_INDEX_BASE=0x500000
-    };
 
     
     WDL_FastString *m_rw_strings[MAX_USER_STRINGS];
@@ -279,6 +383,12 @@ class scriptInstance
 #define EEL_STRING_STDOUT_WRITE(x,len) ((scriptInstance*)(opaque))->WriteOutput(x) 
 
 #include "../WDL/eel2/eel_strings.h"
+
+#define EEL_FILE_OPEN(fn,mode) ((scriptInstance*)opaque)->OpenFile(fn,mode)
+#define EEL_FILE_GETFP(fp) ((scriptInstance*)opaque)->GetFileFP(fp)
+#define EEL_FILE_CLOSE(fpindex) ((scriptInstance*)opaque)->CloseFile(fpindex)
+
+#include "../WDL/eel2/eel_files.h"
 
 
 WDL_PtrList<scriptInstance> g_scripts;
@@ -1449,6 +1559,7 @@ void initialize()
   NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
 
   EEL_string_register();
+  EEL_file_register();
 
   if (!g_script_load_filenames.GetSize() && !g_script_load_paths.GetSize()) 
   {

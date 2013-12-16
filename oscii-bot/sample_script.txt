@@ -76,6 +76,20 @@
 //   strcpy_substr(dest, src, offset, maxlen)
 
 
+// file functions:
+//   fp = fopen("path", "r");    -- opens path in read mode. fp is >0 if succcess. prefix ^/ to get path of 
+//                               -- script, i.e. "^/companion_file.dat". prefix ~/ for home directory (or desktop on win32), @/ for desktop.
+// fclose(fp)
+// fflush(fp)
+// feof(fp)
+// fread(fp,str,length)          -- binary safe read, returns length read
+// fgets(fp,str)                 -- reads a line, returns length read (or 0 if eof)
+// fgetc(fp)                     -- reads a character, returns <0 on EOF
+// fwrite(fp,str,length)         -- binary safe write, writes min(length,strlen(str)), returns bytes written
+// fprintf(fp,str)               -- writes string with format, returns bytes written
+
+
+
 
 @init
 
