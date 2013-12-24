@@ -303,13 +303,20 @@ class scriptInstance
       va_end(arglist);
     }
 
-    int AddString(const WDL_FastString &s)
+    static EEL_F addStringCallback(void *caller_this, struct eelStringSegmentRec *list)
     {
       WDL_FastString *ns = new WDL_FastString;
-      *ns = s; // binary copy
-      m_strings.Add(ns);
-      return m_strings.GetSize()-1+STRING_INDEX_BASE;
-    }
+      // could probably do a faster implementation using AddRaw() etc but this should also be OK
+      int sz=nseel_stringsegments_tobuf(NULL,0,list);
+      ns->SetLen(sz+32);
+      sz=nseel_stringsegments_tobuf((char *)ns->Get(),sz,list);
+      ns->SetLen(sz);
+
+      scriptInstance *_this = (scriptInstance *)caller_this;
+
+      _this->m_strings.Add(ns);
+      return _this->m_strings.GetSize()-1+STRING_INDEX_BASE;
+   }
 
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)
     {
@@ -596,10 +603,7 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
   }
 
 
-  WDL_FastString procOut;
-  eel_preprocess_strings(this,procOut, curblock.Get());
-
-  m_code[parsestate]=NSEEL_code_compile_ex(m_vm,procOut.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);  
+  m_code[parsestate]=NSEEL_code_compile_ex(m_vm,curblock.Get(),lineoffs,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);  
 
   char *err;
   if (!m_code[parsestate] && (err=NSEEL_code_getcodeerror(m_vm)))
@@ -791,6 +795,7 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   m_vm = NSEEL_VM_alloc();
   NSEEL_VM_SetCustomFuncThis(m_vm,this);
+  NSEEL_VM_SetStringFunc(m_vm, addStringCallback);
 
   m_var_time = NSEEL_VM_regvar(m_vm,"time");
   m_var_msgs[0] = NSEEL_VM_regvar(m_vm,"msg1");
