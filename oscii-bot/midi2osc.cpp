@@ -795,7 +795,7 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   m_vm = NSEEL_VM_alloc();
   NSEEL_VM_SetCustomFuncThis(m_vm,this);
-  NSEEL_VM_SetStringFunc(m_vm, addStringCallback);
+  NSEEL_VM_SetStringFunc(m_vm, addStringCallback,NULL);
 
   m_var_time = NSEEL_VM_regvar(m_vm,"time");
   m_var_msgs[0] = NSEEL_VM_regvar(m_vm,"msg1");
