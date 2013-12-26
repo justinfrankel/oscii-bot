@@ -68,83 +68,30 @@ WDL_FastString g_ini_file;
 WDL_FastString g_default_script_path;
 WDL_PtrList<char> g_script_load_filenames, g_script_load_paths;
 
+class eel_string_context_state;
+
 class scriptInstance 
 {
   public:
   
   enum {
+    MAX_OSC_FMTS=32,
     MAX_FILE_HANDLES=128,
-    MAX_USER_STRINGS=1024,  // 0...1023
     OSC_CURMSG_STRING=8000,
-    STRING_INDEX_BASE=9000, // 9000...9000+however many used
     
     INPUT_INDEX_BASE =0x400000,
     OUTPUT_INDEX_BASE=0x500000,
     FILE_HANDLE_INDEX_BASE=0x600000
   };
   
-    scriptInstance(const char *fn, WDL_FastString &results)  : m_namedvars(false)
-    { 
-      memset(m_handles,0,sizeof(m_handles));
-      m_debugOut=0;
-      m_fn.Set(fn);
-      m_vm=0;
-      m_cur_oscmsg=0;
-      m_builtin_code=0;
-      memset(m_code,0,sizeof(m_code));
-      memset(m_rw_strings,0,sizeof(m_rw_strings));
-      clear();
-      load_script(results);
-    }
-    ~scriptInstance() 
-    {
-      clear();
-      int x;
-      for (x=0;x<MAX_USER_STRINGS;x++) delete m_rw_strings[x];
-      for (x=0;x<MAX_FILE_HANDLES;x++) 
-      {
-        if (m_handles[x]) fclose(m_handles[x]); 
-        m_handles[x]=0;
-      }
-    }
+    scriptInstance(const char *fn, WDL_FastString &results);
+    ~scriptInstance() ;
 
     void load_script(WDL_FastString &results);
-    void clear()
-    {
-      m_debugOut=0;
-      m_in_devs.Empty();
-      m_out_devs.Empty();
-      m_strings.Empty(true);
-      int x;
-      for (x=0;x<MAX_USER_STRINGS;x++) if (m_rw_strings[x]) m_rw_strings[x]->Set("");
+    void clear();
 
-      if (m_builtin_code) NSEEL_code_free(m_builtin_code);
-      m_builtin_code = NULL;
-      for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
-      {
-        if (m_code[x]) NSEEL_code_free(m_code[x]);
-        m_code[x]=0;
-      }
-      if (m_vm) NSEEL_VM_free(m_vm);
-      m_vm=0;
-      m_incoming_events.Resize(0,false);
+    void start(WDL_FastString &results);
 
-      m_var_time = 0;
-      memset(m_var_msgs,0,sizeof(m_var_msgs));
-      memset(m_var_fmt,0,sizeof(m_var_fmt));
-      m_namedvars.DeleteAll();
-    }
-
-    void start(WDL_FastString &results)
-    {
-      if (m_code[0])
-      {
-        if (m_var_time) *m_var_time = timeGetTime()/1000.0;
-        m_debugOut = &results;
-        NSEEL_code_execute(m_code[0]);
-        m_debugOut = NULL;
-      }
-    }
 
     void WriteOutput(const char *buf)
     {
@@ -285,11 +232,7 @@ class scriptInstance
     WDL_HeapBuf m_incoming_events;  // incomingEvent list, each is 8-byte aligned
     WDL_Mutex m_incoming_events_mutex;
 
-
-    
-    WDL_FastString *m_rw_strings[MAX_USER_STRINGS];
-
-    WDL_PtrList<WDL_FastString> m_strings;
+    eel_string_context_state *m_eel_string_state;
     
     void DebugOutput(const char *fmt, ...)
     {
@@ -303,72 +246,8 @@ class scriptInstance
       va_end(arglist);
     }
 
-    static EEL_F addStringCallback(void *caller_this, struct eelStringSegmentRec *list)
-    {
-      WDL_FastString *ns = new WDL_FastString;
-      // could probably do a faster implementation using AddRaw() etc but this should also be OK
-      int sz=nseel_stringsegments_tobuf(NULL,0,list);
-      ns->SetLen(sz+32);
-      sz=nseel_stringsegments_tobuf((char *)ns->Get(),sz,list);
-      ns->SetLen(sz);
-
-      scriptInstance *_this = (scriptInstance *)caller_this;
-
-      _this->m_strings.Add(ns);
-      return _this->m_strings.GetSize()-1+STRING_INDEX_BASE;
-   }
-
-    const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL)
-    {
-      const int idx = (int) (val+0.5);
-      if (idx>=0 && idx < MAX_USER_STRINGS)
-      {
-        if (isWriteableAs)
-        {
-          if (!m_rw_strings[idx]) m_rw_strings[idx] = new WDL_FastString;
-          *isWriteableAs = m_rw_strings[idx];
-        }
-        return m_rw_strings[idx]?m_rw_strings[idx]->Get():"";
-      }
-
-      if (isWriteableAs) *isWriteableAs=NULL;
-
-      if (idx == OSC_CURMSG_STRING)
-        return m_cur_oscmsg ? m_cur_oscmsg->GetMessage() : NULL;
-
-      WDL_FastString *s = m_strings.Get(idx - STRING_INDEX_BASE);
-      if (s)
-      {
-        if (isWriteableAs) *isWriteableAs=s;
-        return s->Get();
-      }
-      return NULL;
-    }
-
-    enum { MAX_OSC_FMTS=32 };
-
-    EEL_F *GetNamedVar(const char *s, bool createIfNotExists)
-    {
-      if (!*s) return NULL;
-      EEL_F *r = m_namedvars.Get(s);
-      if (r || !createIfNotExists) return r;
-      r=NSEEL_VM_regvar(m_vm,s);
-      if (r) m_namedvars.Insert(s,r);
-      return r;
-    }
-
-    EEL_F *GetVarForFormat(int formatidx)
-    {
-      if (formatidx>=0 && formatidx<MAX_OSC_FMTS) return m_var_fmt[formatidx];
-      return NULL;
-    }
-
-    WDL_StringKeyedArray<EEL_F *> m_namedvars;
-    static int varEnumProc(const char *name, EEL_F *val, void *ctx)
-    {
-      ((scriptInstance *)ctx)->m_namedvars.AddUnsorted(name,val);
-      return 1;
-    }
+    const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL);
+    EEL_F *GetVarForFormat(int formatidx);
 
     EEL_F *m_var_time, *m_var_msgs[5], *m_var_fmt[MAX_OSC_FMTS];
     NSEEL_VMCTX m_vm;
@@ -383,11 +262,15 @@ class scriptInstance
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, EEL_F *fmt);
 };
 
-#define EEL_STRING_GETNAMEDVAR(x,y) ((scriptInstance*)(opaque))->GetNamedVar(x,y)
-#define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
-#define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
-#define EEL_STRING_ADDTOTABLE(x)  ((scriptInstance*)(opaque))->AddString(x)
+#define EEL_STRINGS_MUTABLE_LITERALS // OSCII-bot has always had mutable strings, sooo....
+#define EEL_STRING_GET_CONTEXT_POINTER(opaque) (((scriptInstance *)opaque)->m_eel_string_state)
 
+// override defaults for format variables
+#define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
+// override defaults for OSC index of 8000
+#define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
+
+// debug/stdout write
 #define EEL_STRING_DEBUGOUT ((scriptInstance*)(opaque))->DebugOutput // no parameters, since it takes varargs
 #define EEL_STRING_STDOUT_WRITE(x,len) ((scriptInstance*)(opaque))->WriteOutput(x) 
 
@@ -398,6 +281,89 @@ class scriptInstance
 #define EEL_FILE_CLOSE(fpindex) ((scriptInstance*)opaque)->CloseFile(fpindex)
 
 #include "../WDL/eel2/eel_files.h"
+
+
+
+scriptInstance::scriptInstance(const char *fn, WDL_FastString &results) 
+{ 
+  memset(m_handles,0,sizeof(m_handles));
+  m_debugOut=0;
+  m_fn.Set(fn);
+  m_vm=0;
+  m_cur_oscmsg=0;
+  m_builtin_code=0;
+  memset(m_code,0,sizeof(m_code));
+  m_eel_string_state = new eel_string_context_state;
+  
+  clear();
+  load_script(results);
+}
+
+scriptInstance::~scriptInstance() 
+{
+  clear();
+  int x;
+  for (x=0;x<MAX_FILE_HANDLES;x++) 
+  {
+    if (m_handles[x]) fclose(m_handles[x]); 
+    m_handles[x]=0;
+  }
+  delete m_eel_string_state;
+}
+
+void scriptInstance::clear()
+{
+  m_debugOut=0;
+  m_in_devs.Empty();
+  m_out_devs.Empty();
+  m_eel_string_state->clear_state(true);
+  int x;
+  if (m_builtin_code) NSEEL_code_free(m_builtin_code);
+  m_builtin_code = NULL;
+  for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
+  {
+    if (m_code[x]) NSEEL_code_free(m_code[x]);
+    m_code[x]=0;
+  }
+  if (m_vm) NSEEL_VM_free(m_vm);
+  m_vm=0;
+  m_incoming_events.Resize(0,false);
+
+  m_var_time = 0;
+  memset(m_var_msgs,0,sizeof(m_var_msgs));
+  memset(m_var_fmt,0,sizeof(m_var_fmt));
+}
+
+void scriptInstance::start(WDL_FastString &results)
+{
+  m_eel_string_state->update_named_vars(m_vm);
+  if (m_code[0])
+  {
+    if (m_var_time) *m_var_time = timeGetTime()/1000.0;
+    m_debugOut = &results;
+    NSEEL_code_execute(m_code[0]);
+    m_debugOut = NULL;
+  }
+}
+
+const char *scriptInstance::GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs)
+{
+  const int idx = (int) (val+0.5);
+  if (idx == OSC_CURMSG_STRING)
+  {
+    if (isWriteableAs) *isWriteableAs=NULL;
+    return m_cur_oscmsg ? m_cur_oscmsg->GetMessage() : NULL;
+  }
+
+  return m_eel_string_state->GetStringForIndex(val,isWriteableAs);
+}
+
+EEL_F *scriptInstance::GetVarForFormat(int formatidx)
+{
+  if (formatidx>=0 && formatidx<MAX_OSC_FMTS) return m_var_fmt[formatidx];
+  return m_eel_string_state->GetVarForFormat(formatidx);
+}
+
 
 
 WDL_PtrList<scriptInstance> g_scripts;
@@ -795,7 +761,8 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   m_vm = NSEEL_VM_alloc();
   NSEEL_VM_SetCustomFuncThis(m_vm,this);
-  NSEEL_VM_SetStringFunc(m_vm, addStringCallback,NULL);
+  eel_string_initvm(m_vm);
+
 
   m_var_time = NSEEL_VM_regvar(m_vm,"time");
   m_var_msgs[0] = NSEEL_VM_regvar(m_vm,"msg1");
@@ -1139,14 +1106,8 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   fclose(fp);
 
-  results.AppendFormatted(512,"\t%d inputs, %d outputs, %d strings\r\n\r\n",
-      m_in_devs.GetSize(),m_out_devs.GetSize(),m_strings.GetSize());
-
-  m_namedvars.DeleteAll();
-
-  NSEEL_VM_enumallvars(m_vm,varEnumProc, this);
-  m_namedvars.Resort();
-
+  results.AppendFormatted(512,"\t%d inputs, %d outputs\r\n\r\n",
+      m_in_devs.GetSize(),m_out_devs.GetSize());
 }
 
 void scriptInstance::messageCallback(void *d1, void *d2, char type, int len, void *msg)
