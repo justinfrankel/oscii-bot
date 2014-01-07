@@ -251,7 +251,6 @@ class scriptInstance
 
     EEL_F *m_var_time, *m_var_msgs[5], *m_var_fmt[MAX_OSC_FMTS];
     NSEEL_VMCTX m_vm;
-    NSEEL_CODEHANDLE m_builtin_code;
     NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
 
     const OscMessageRead *m_cur_oscmsg;
@@ -291,7 +290,6 @@ scriptInstance::scriptInstance(const char *fn, WDL_FastString &results)
   m_fn.Set(fn);
   m_vm=0;
   m_cur_oscmsg=0;
-  m_builtin_code=0;
   memset(m_code,0,sizeof(m_code));
   m_eel_string_state = new eel_string_context_state;
   
@@ -318,8 +316,6 @@ void scriptInstance::clear()
   m_out_devs.Empty();
   m_eel_string_state->clear_state(true);
   int x;
-  if (m_builtin_code) NSEEL_code_free(m_builtin_code);
-  m_builtin_code = NULL;
   for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
   {
     if (m_code[x]) NSEEL_code_free(m_code[x]);
@@ -792,20 +788,6 @@ void scriptInstance::load_script(WDL_FastString &results)
   m_var_msgs[3] = NSEEL_VM_regvar(m_vm,"msgdev");
   m_var_msgs[4] = NSEEL_VM_regvar(m_vm,"oscstr");
   if (m_var_msgs[4]) m_var_msgs[4][0] = -1.0;
-
-  m_builtin_code = NSEEL_code_compile_ex(m_vm,
-
-   "function strcpy_substr(dest, src, offset, maxlen) ("
-   "  offset < 0 ? offset=strlen(src)+offset;"
-   "  maxlen < 0 ? maxlen = strlen(src) - offset + maxlen;"
-   "  strcpy_from(dest, src, offset);"
-   "  maxlen > 0 && strlen(dest) > maxlen ? str_setlen(dest,maxlen);"
-   ");\n"
-
-
-  ,0,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS
-
-  );
 
   int x;
   for (x=0;x < MAX_OSC_FMTS;x++)
