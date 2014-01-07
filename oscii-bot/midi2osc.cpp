@@ -256,10 +256,10 @@ class scriptInstance
 
     const OscMessageRead *m_cur_oscmsg;
   
-    static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value);
+    static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
-    static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, EEL_F *fmt);
+    static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, INT_PTR np, EEL_F **parms);
 };
 
 #define EEL_STRINGS_MUTABLE_LITERALS // OSCII-bot has always had mutable strings, sooo....
@@ -578,57 +578,75 @@ void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock,
   }
 }
 
-EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_device, EEL_F *fmt_index, EEL_F *value)
+// destdevice, fmtstr, value, ...
+EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, EEL_F **parms)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this)
+  if (_this && np > 1)
   {
-    int output_idx = (int) floor(*dest_device+0.5);
+    int output_idx = (int) floor(parms[0][0]+0.5);
     outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
     if (!output && output_idx >= 0)
     {
-      _this->DebugOutput("oscsend(): output device %f invalid",*dest_device);
+      _this->DebugOutput("oscsend(): output device %f invalid",parms[0][0]);
     }
     if (output || output_idx == -1 || output_idx==-100)
     {
-      const char *fmt = _this->GetStringForIndex(*fmt_index);
+      const char *fmt = _this->GetStringForIndex(parms[1][0]);
       if (fmt)
       {
-        char fmt_type = 0;
-        if (fmt[0] && fmt[0] != '/') fmt_type = *fmt++;
+        int nv=0;
+        const char *fmt_types = fmt;
+        while (fmt[0] && fmt[0] != '/') 
+        {
+          if (*fmt != 't') nv++;
+          fmt++;
+        }
+        if (fmt == fmt_types)
+        {
+          if (np == 2) nv=0;  // if no type specified and no parameters, toggle!
+          else nv=1; // otherwise send one parameter
+        }
 
         char buf[1024+128];
-        if (eel_format_strings(opaque,fmt,NULL,buf,sizeof(buf)))
+        if (eel_format_strings(opaque,fmt,NULL,buf,sizeof(buf), max(np-2-nv,0), parms+2+nv))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);
         
-          if (fmt_type == 'b') wr.PushIntArg(!!(int) (*value));
-          else if (fmt_type =='i') wr.PushIntArg((int) (*value));
-          else if (fmt_type == 's')
+          int x;
+          for (x = 0; x < nv;  x++)
           {
-            const char *strval = _this->GetStringForIndex(*value);
-            if (strval)
-            {
-              wr.PushStringArg(strval);
-            }
-            else
-            {
-              char tmp[64];
-              sprintf(tmp,"%.2f",*value);
-              wr.PushStringArg(tmp);
-            }         
-          }
-          else if (fmt_type == 't')
-          {
-            // no parameter, just toggle
-          }
-          else 
-          {
-            // default to float
-            wr.PushFloatArg((float)*value);
-          }
+            char fmt_type = fmt_types[x];
+            double val = x+2 < np ? parms[x+2][0] : 0.0;
 
+            if (fmt_type == 'b') wr.PushIntArg(!!(int) val);
+            else if (fmt_type =='i') wr.PushIntArg((int) val);
+            else if (fmt_type == 's')
+            {
+              const char *strval = _this->GetStringForIndex(val);
+              if (strval)
+              {
+                wr.PushStringArg(strval);
+              }
+              else
+              {
+                char tmp[64];
+                sprintf(tmp,"%.2f",val);
+                wr.PushStringArg(tmp);
+              }         
+            }
+            else if (fmt_type == 't')
+            {
+              // no parameter, just toggle
+            }
+            else 
+            {
+              // default to float
+              wr.PushFloatArg((float)val);
+            }
+          }
+  
           int l=0;
           const char *ret=wr.GetBuffer(&l);
           if (ret && l>0) 
@@ -659,7 +677,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, EEL_F *dest_d
       }
       else
       {
-        _this->DebugOutput("oscsend(): bad format index %f",*fmt_index);
+        _this->DebugOutput("oscsend(): bad format index %f",parms[1][0]);
       }
     }
   }
@@ -695,18 +713,21 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, EEL_F *parmidx, EE
 
 
 
-EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, EEL_F *fmt_index)
+EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, INT_PTR np, EEL_F **parms)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
-  if (_this && _this->m_cur_oscmsg)
+  if (_this && _this->m_cur_oscmsg && np >= 1)
   {
     WDL_FastString *fmt_wr=NULL;
-    const char *fmt = _this->GetStringForIndex(*fmt_index,&fmt_wr);
+    const char *fmt = _this->GetStringForIndex(parms[0][0],&fmt_wr);
     if (fmt)
     {
       const char *msg = _this->m_cur_oscmsg->GetMessage();
 
-      if (msg) return eel_string_match(opaque,fmt,msg,0,true,fmt + (fmt_wr ? fmt_wr->GetLength() : strlen(fmt)),msg+strlen(msg)) ? 1.0 : 0.0;
+      if (msg) return eel_string_match(opaque,fmt,msg,0,true,
+          fmt + (fmt_wr ? fmt_wr->GetLength() : strlen(fmt)),msg+strlen(msg), 
+          np-1, parms+1)
+        ? 1.0 : 0.0;
     }
   }
   return 0.0;
@@ -1523,9 +1544,9 @@ void initialize()
   JNL::open_socketlib();
 
   NSEEL_init();
-  NSEEL_addfunctionex("oscsend",3,(char *)_asm_generic3parm_retd,(char *)_asm_generic3parm_retd_end-(char *)_asm_generic3parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
+  NSEEL_addfunc_varparm("oscsend",2,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
   NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
-  NSEEL_addfunctionex("oscmatch",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
+  NSEEL_addfunc_varparm("oscmatch",1,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
   NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
 
   EEL_string_register();
