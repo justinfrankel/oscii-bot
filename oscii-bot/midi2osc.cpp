@@ -373,7 +373,7 @@ public:
   {
     m_recvaddr = addr;
     m_recvsock=socket(AF_INET, SOCK_DGRAM, 0);
-    if (m_recvsock>=0)
+    if (m_recvsock != INVALID_SOCKET)
     {
       int on=1;
       setsockopt(m_recvsock, SOL_SOCKET, SO_BROADCAST, (char*)&on, sizeof(on));
@@ -384,17 +384,17 @@ public:
       else
       {
         closesocket(m_recvsock);
-        m_recvsock=-1;
+        m_recvsock=INVALID_SOCKET;
       }
     }
   }
   virtual ~oscInputDevice()
   {
-    if (m_recvsock >= 0)
+    if (m_recvsock != INVALID_SOCKET)
     {
       shutdown(m_recvsock, SHUT_RDWR);
       closesocket(m_recvsock);
-      m_recvsock=-1;
+      m_recvsock=INVALID_SOCKET;
     }
   }
 
@@ -415,7 +415,7 @@ public:
 
   virtual const char *get_type() { return "OSC"; }
 
-  int m_recvsock;
+  SOCKET m_recvsock;
   struct sockaddr_in m_recvaddr;
   WDL_Queue m_recvq;
 
@@ -447,7 +447,7 @@ public:
     m_maxpacketsz = maxpacket> 0 ? maxpacket:1024;
     m_sendsleep = sendsleep >= 0 ? sendsleep : 10;
     m_sendsock=socket(AF_INET, SOCK_DGRAM, 0);
-    if (m_sendsock >= 0)
+    if (m_sendsock != INVALID_SOCKET)
     {
       int on=1;
       setsockopt(m_sendsock, SOL_SOCKET, SO_BROADCAST, (char*)&on, sizeof(on));
@@ -456,11 +456,11 @@ public:
   }
   virtual ~oscOutputDevice() 
   { 
-    if (m_sendsock >= 0)
+    if (m_sendsock != INVALID_SOCKET)
     {
       shutdown(m_sendsock, SHUT_RDWR);
       closesocket(m_sendsock);
-      m_sendsock=-1;
+      m_sendsock=INVALID_SOCKET;
     }
   } 
 
@@ -545,7 +545,7 @@ public:
   }
   virtual const char *get_type() { return "OSC"; }
 
-  int m_sendsock;
+  SOCKET m_sendsock;
   int m_maxpacketsz, m_sendsleep;
   struct sockaddr_in m_sendaddr;
   WDL_Queue m_sendq;
@@ -901,7 +901,7 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (!r)
               {
                 r = new oscInputDevice(addr);
-                if (r->m_recvsock < 0)
+                if (r->m_recvsock == INVALID_SOCKET)
                 {
                   delete r;
                   r=NULL;
@@ -1038,7 +1038,7 @@ void scriptInstance::load_script(WDL_FastString &results)
                 is_reuse=false;
                 r = new oscOutputDevice(dp, lp.getnumtokens()>4 ? lp.gettoken_int(4) : 0,
                                             lp.getnumtokens()>5 ? lp.gettoken_int(5) : -1);
-                if (r->m_sendsock<0)
+                if (r->m_sendsock == INVALID_SOCKET)
                 {
                   results.AppendFormatted(1024,"\tWarning: failed creating destination for @output '%s' OSC '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(3));
                   delete r;
