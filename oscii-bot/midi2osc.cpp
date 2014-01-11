@@ -69,6 +69,7 @@ WDL_FastString g_default_script_path;
 WDL_PtrList<char> g_script_load_filenames, g_script_load_paths;
 
 class eel_string_context_state;
+class eel_lice_state;
 
 class scriptInstance 
 {
@@ -135,6 +136,44 @@ class scriptInstance
     }
 
     FILE *m_handles[MAX_FILE_HANDLES];
+    
+    void translateFilenamePath(const char *fn, WDL_FastString *fsOut)
+    {
+      if (!strncmp(fn,"~/",2))
+      {
+#ifdef _WIN32
+        // win32 "home" sucks, so just go to desktop
+        GetShellPath(fsOut,"Desktop");
+        if (fsOut->Get()[0]) { fsOut->Append("\\"); fsOut->Append(fn+2); }
+#else
+        char *h = getenv("HOME");
+        if (h && *h) { fsOut->Set(h); fsOut->Append("/"); fsOut->Append(fn+2); }
+#endif
+      }
+      else if (!strncmp(fn,"@/",2))
+      {
+#ifdef _WIN32
+        GetShellPath(fsOut,"Desktop");
+        if (fsOut->Get()[0]) { fsOut->Append("\\"); fsOut->Append(fn+2); }
+#else
+        char *h = getenv("HOME");
+        if (h && *h) { fsOut->Set(h); fsOut->Append("/Desktop/"); fsOut->Append(fn+2); }
+#endif
+      }
+      else if (!strncmp(fn,"^/",2))
+      {
+        fsOut->Set(m_fn.Get());
+        int idx=fsOut->GetLength();
+        while (idx>=0 && fsOut->Get()[idx] != '\\' && fsOut->Get()[idx] != '/') idx--;
+        if (idx>=0)
+        {
+          fsOut->SetLen(idx+1);
+          fsOut->Append(fn+2);
+        }
+      }
+    }
+
+
     EEL_F OpenFile(const char *fn, const char *mode)
     {
       if (!*fn || !*mode) return -1.0;
@@ -148,38 +187,7 @@ class scriptInstance
       }
 
       WDL_FastString tmp;
-      if (!strncmp(fn,"~/",2))
-      {
-#ifdef _WIN32
-        // win32 "home" sucks, so just go to desktop
-        GetShellPath(&tmp,"Desktop");
-        if (tmp.Get()[0]) { tmp.Append("\\"); tmp.Append(fn+2); }
-#else
-        char *h = getenv("HOME");
-        if (h && *h) { tmp.Set(h); tmp.Append("/"); tmp.Append(fn+2); }
-#endif
-      }
-      else if (!strncmp(fn,"@/",2))
-      {
-#ifdef _WIN32
-        GetShellPath(&tmp,"Desktop");
-        if (tmp.Get()[0]) { tmp.Append("\\"); tmp.Append(fn+2); }
-#else
-        char *h = getenv("HOME");
-        if (h && *h) { tmp.Set(h); tmp.Append("/Desktop/"); tmp.Append(fn+2); }
-#endif
-      }
-      else if (!strncmp(fn,"^/",2))
-      {
-        tmp.Set(m_fn.Get());
-        int idx=tmp.GetLength();
-        while (idx>=0 && tmp.Get()[idx] != '\\' && tmp.Get()[idx] != '/') idx--;
-        if (idx>=0)
-        {
-          tmp.SetLen(idx+1);
-          tmp.Append(fn+2);
-        }
-      }
+      translateFilenamePath(fn,&tmp);
 
       FILE *fp = fopen(tmp.Get()[0] ? tmp.Get():fn,mode);
       if (!fp) 
@@ -233,6 +241,7 @@ class scriptInstance
     WDL_Mutex m_incoming_events_mutex;
 
     eel_string_context_state *m_eel_string_state;
+    eel_lice_state *m_lice_state;
     
     void DebugOutput(const char *fmt, ...)
     {
@@ -248,6 +257,21 @@ class scriptInstance
 
     const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL);
     EEL_F *GetVarForFormat(int formatidx);
+
+    bool GetImageFilename(EEL_F val, WDL_FastString *fsWithDir, int isWrite)
+    {
+      const char *fn=GetStringForIndex(val,NULL);
+      if (fn)
+      {
+        fsWithDir->Set(fn);
+        translateFilenamePath(fn,fsWithDir);
+        if (!fsWithDir->Get()[0]) fsWithDir->Set(fn);
+        return true;
+      }
+
+      return false;
+    }
+
 
     EEL_F *m_var_time, *m_var_msgs[5], *m_var_fmt[MAX_OSC_FMTS];
     NSEEL_VMCTX m_vm;
@@ -281,7 +305,12 @@ class scriptInstance
 
 #include "../WDL/eel2/eel_files.h"
 
+#define EEL_LICE_STANDALONE_PARENT(opaque) (g_hwnd)
+#define EEL_LICE_GET_FILENAME_FOR_STRING(idx, fs, p) (((scriptInstance*)opaque)->GetImageFilename(idx,fs,p))
+#define EEL_LICE_GET_CONTEXT(x) (((scriptInstance *)opaque)->m_lice_state)
+#define EEL_LICE_WANT_STANDALONE
 
+#include "../WDL/eel2/eel_lice.h"
 
 scriptInstance::scriptInstance(const char *fn, WDL_FastString &results) 
 { 
@@ -292,9 +321,11 @@ scriptInstance::scriptInstance(const char *fn, WDL_FastString &results)
   m_cur_oscmsg=0;
   memset(m_code,0,sizeof(m_code));
   m_eel_string_state = new eel_string_context_state;
+  m_lice_state=0;
   
   clear();
   load_script(results);
+  m_lice_state = new eel_lice_state(m_vm,this,1024,64);
 }
 
 scriptInstance::~scriptInstance() 
@@ -307,6 +338,7 @@ scriptInstance::~scriptInstance()
     m_handles[x]=0;
   }
   delete m_eel_string_state;
+  delete m_lice_state;
 }
 
 void scriptInstance::clear()
@@ -1144,6 +1176,13 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
   bool rv=false;
   if (m_var_time) *m_var_time = curtime;
 
+  int needGfxRef=0;
+  if (m_lice_state && m_lice_state->hwnd_standalone)
+  {
+    RECT r;
+    GetClientRect(m_lice_state->hwnd_standalone,&r);
+    needGfxRef=m_lice_state->setup_frame(m_lice_state->hwnd_standalone,r);
+  }
 
   m_debugOut = &results;
   if (m_incoming_events.GetSize())
@@ -1225,6 +1264,12 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
   }
   if (m_vm && m_code[1]) NSEEL_code_execute(m_code[1]); // timer follows messages
   m_debugOut=0;
+
+  if (m_lice_state->hwnd_standalone && (needGfxRef || (m_lice_state && m_lice_state->m_framebuffer_refstate)))
+  {
+    InvalidateRect(m_lice_state->hwnd_standalone,NULL,FALSE);
+  }
+
   return rv;
 }
 
@@ -1326,6 +1371,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         SetWindowText(hwndDlg,vs);
       }
       g_hwnd=hwndDlg;
+
       resize.init(hwndDlg);
       resize.init_item(IDC_EDIT1,0,0,1,1);
       resize.init_item(IDCANCEL,0,1,0,1);
@@ -1533,6 +1579,13 @@ void initialize()
 
   EEL_string_register();
   EEL_file_register();
+
+  eel_lice_register();
+  HICON icon=NULL;
+#ifdef _WIN32
+  icon = LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
+#endif
+  eel_lice_register_standalone(g_hInstance,"OSCII-bot-gfx", NULL, icon);
 
   if (!g_script_load_filenames.GetSize() && !g_script_load_paths.GetSize()) 
   {

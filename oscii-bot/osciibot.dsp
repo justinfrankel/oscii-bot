@@ -99,6 +99,10 @@ SOURCE=..\WDL\eel2\eel_files.h
 # End Source File
 # Begin Source File
 
+SOURCE=..\WDL\eel2\eel_lice.h
+# End Source File
+# Begin Source File
+
 SOURCE=..\WDL\eel2\eel_strings.h
 # End Source File
 # Begin Source File
@@ -136,6 +140,214 @@ SOURCE="..\WDL\eel2\nseel-yylex.c"
 # Begin Source File
 
 SOURCE=..\WDL\jnetlib\util.cpp
+# End Source File
+# End Group
+# Begin Group "lice"
+
+# PROP Default_Filter ""
+# Begin Group "pnglib"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=..\WDL\libpng\png.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\png.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngconf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngdebug.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngerror.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngget.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pnginfo.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pnglibconf.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngmem.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngpread.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngpriv.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngread.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngrio.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngrtran.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngrutil.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngset.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngstruct.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngtrans.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngwio.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngwrite.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngwtran.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\libpng\pngwutil.c
+# End Source File
+# End Group
+# Begin Group "zlib"
+
+# PROP Default_Filter ""
+# Begin Source File
+
+SOURCE=..\WDL\zlib\adler32.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\compress.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\crc32.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\crc32.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\deflate.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\deflate.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\gzguts.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\gzlib.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\infback.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inffast.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inffast.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inffixed.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inflate.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inflate.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inftrees.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\inftrees.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\trees.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\trees.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\uncompr.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\zlib.h
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\zutil.c
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\zlib\zutil.h
+# End Source File
+# End Group
+# Begin Source File
+
+SOURCE=..\WDL\lice\lice.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\lice\lice_line.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\lice\lice_png.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\lice\lice_text.cpp
+# End Source File
+# Begin Source File
+
+SOURCE=..\WDL\lice\lice_textnew.cpp
 # End Source File
 # End Group
 # Begin Source File
