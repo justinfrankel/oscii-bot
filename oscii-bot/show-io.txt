@@ -1,0 +1,53 @@
+@input omni_midi_out OMNI-MIDI-OUTPUT
+@input omni_osc_out OMNI-OSC-OUTPUT
+@input omni_midi OMNI-MIDI
+@input omni_osc OMNI-OSC
+@init
+
+
+gfx_init("show input and output", 320,200);
+
+
+function showmsg(type, desc, wp) local(colpos,w,h,str) 
+(
+  gfx_setfont(1,"Verdana",max(gfx_h/16,10));
+  gfx_a=1;
+  gfx_mode=0;
+  sprintf(str=#,"%s message: %s\n",type,desc);
+  gfx_measurestr(str,w,h);
+  gfx_x=gfx_w/2-w/2+2;
+  gfx_y=wp - h/2;
+  gfx_r=gfx_g=gfx_b=0;
+  gfx_drawstr(str);
+
+  gfx_r=0.5+0.5*cos(colpos);
+  gfx_g=0.7+0.3*cos(colpos+$pi/4);
+  gfx_b=0.6+0.4*cos(colpos+$pi/8);
+  colpos+=0.03;
+
+  gfx_x=gfx_w/2-w/2;
+  gfx_y-=2;
+  gfx_drawstr(str);
+
+);
+
+@oscmsg
+
+showmsg(msgdev==omni_osc ? "OSC-IN" : "OSC-OUT", oscstr,gfx_h*.4);
+
+@midimsg
+
+showmsg(msgdev==omni_midi ? "MIDI-IN" : "MIDI-OUT", sprintf(#,"%02x %02x %02x",msg1,msg2,msg3),gfx_h*.6);
+
+@timer
+
+gfx_clear=-1;
+gfx_x=gfx_y=0;
+
+dx=gfx_w*0.01;
+dy=gfx_h*0.01;
+gfx_a=1.0;
+gfx_blit(-1,0,0.003,dx,dy,gfx_w-2*dx,gfx_h-2*dy,0,0,gfx_w,gfx_h);
+gfx_a=0.01;
+gfx_r=gfx_g=gfx_b=0;
+gfx_rect(0,0,gfx_w,gfx_h);

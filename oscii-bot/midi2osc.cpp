@@ -396,8 +396,9 @@ EEL_F *scriptInstance::GetVarForFormat(int formatidx)
 
 
 WDL_PtrList<scriptInstance> g_scripts;
-WDL_PtrList<inputDevice> g_inputs; // these are owned here, scriptInstances reference them
+WDL_PtrList<inputDevice> g_inputs,g_omni_inputs_fordelete; // these are owned here, scriptInstances reference them
 WDL_PtrList<outputDevice> g_outputs;
+omniInputDevice *g_input_omni_outs[2]; // midi,osc
 
 class oscInputDevice : public inputDevice
 {
@@ -680,6 +681,11 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, E
           const char *ret=wr.GetBuffer(&l);
           if (ret && l>0) 
           {
+            if (g_input_omni_outs[1]) 
+            {
+              g_input_omni_outs[1]->onMessage(1,(unsigned char *)ret,l);
+            }
+
             if (output)
             {
               output->oscSend(ret,l);
@@ -782,6 +788,8 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
       msg[1] = vms[1] ? (int) (vms[1][0]) : 0;
       msg[2] = vms[2] ? (int) (vms[2][0]) : 0;
 
+      if (g_input_omni_outs[0]) g_input_omni_outs[0]->onMessage(0,msg,3);
+
       if (output)
       {
         output->midiSend(msg,3);
@@ -877,7 +885,7 @@ void scriptInstance::load_script(WDL_FastString &results)
       {
         int this_type;
 
-        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0] || (this_type = lp.gettoken_enum(2,"MIDI\0OSC\0OMNI-MIDI\0OMNI-OSC\0"))<0 ||
+        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0] || (this_type = lp.gettoken_enum(2,"MIDI\0OSC\0OMNI-MIDI\0OMNI-OSC\0OMNI-MIDI-OUTPUT\0OMNI-OSC-OUTPUT\0"))<0 ||
           (this_type < 2 && lp.getnumtokens()<4))
         {
           results.Append("\tUsage: @input devicehandle MIDI \"substring devicename match\" [skip_count]\r\n");
@@ -885,6 +893,8 @@ void scriptInstance::load_script(WDL_FastString &results)
           results.Append("\tUsage: @input devicehandle OSC \"*:port\"\r\n");
           results.Append("\tUsage: @input devicehandle OMNI-MIDI\r\n");
           results.Append("\tUsage: @input devicehandle OMNI-OSC\r\n");
+          results.Append("\tUsage: @input devicehandle OMNI-MIDI-OUTPUT\r\n");
+          results.Append("\tUsage: @input devicehandle OMNI-OSC-OUTPUT\r\n");
         }
         else
         {
@@ -893,7 +903,7 @@ void scriptInstance::load_script(WDL_FastString &results)
             results.AppendFormatted(1024,"\tWarning: device name '%s' already in use, skipping @input line\r\n",lp.gettoken_str(1));
           }
           else
-          {
+          {            
             if (this_type==3||this_type==2) // OMNI-OSC or OMNI-MIDI
             {
               omniInputDevice *r = new omniInputDevice(this_type == 3 ? "OSC" : "MIDI");
@@ -901,7 +911,22 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
               r->addinst(messageCallback,this,dev_idx);
               m_in_devs.Add(r);
+              
+              g_omni_inputs_fordelete.Add(r);
               // do NOT add OMNI instances to g_inputs! :)
+            }
+            else if (this_type==5||this_type==4) // OMNI-OSC or OMNI-MIDI
+            {
+              const int w=this_type==5;
+              if (!g_input_omni_outs[w]) g_input_omni_outs[w]=new omniInputDevice("");
+
+              omniInputDevice *r = g_input_omni_outs[w];
+              EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+              if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+              r->addinst(messageCallback,this,dev_idx);
+              m_in_devs.Add(r);
+              
+              // do NOT add OMNI-OUT instances to g_inputs either! :)
             }
             else if (this_type==1) // OSC
             {
@@ -1336,6 +1361,11 @@ void load_scripts_for_path(const char *path, WDL_FastString &results)
 
 void load_all_scripts(WDL_FastString &results)
 {
+  g_omni_inputs_fordelete.Empty(true);
+  delete g_input_omni_outs[0];
+  g_input_omni_outs[0]=NULL;
+  delete g_input_omni_outs[1];
+  g_input_omni_outs[1]=NULL;
   g_inputs.Empty(true);
   g_outputs.Empty(true);
   g_scripts.Empty(true);
