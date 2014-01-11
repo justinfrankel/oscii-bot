@@ -307,7 +307,8 @@ class scriptInstance
 
 #define EEL_LICE_STANDALONE_PARENT(opaque) (g_hwnd)
 #define EEL_LICE_GET_FILENAME_FOR_STRING(idx, fs, p) (((scriptInstance*)opaque)->GetImageFilename(idx,fs,p))
-#define EEL_LICE_GET_CONTEXT(x) (((scriptInstance *)opaque)->m_lice_state)
+#define EEL_LICE_GET_CONTEXT_INIT(x) (((scriptInstance *)opaque)->m_lice_state)
+#define EEL_LICE_GET_CONTEXT(x) (EEL_LICE_GET_CONTEXT_INIT(x) && EEL_LICE_GET_CONTEXT_INIT(x)->hwnd_standalone ? EEL_LICE_GET_CONTEXT_INIT(x) : NULL)
 #define EEL_LICE_WANT_STANDALONE
 
 #include "../WDL/eel2/eel_lice.h"
