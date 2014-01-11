@@ -877,11 +877,14 @@ void scriptInstance::load_script(WDL_FastString &results)
       {
         int this_type;
 
-        if (lp.getnumtokens()<4 || !lp.gettoken_str(1)[0] || (this_type = lp.gettoken_enum(2,"MIDI\0OSC\0"))<0)
+        if (lp.getnumtokens()<3 || !lp.gettoken_str(1)[0] || (this_type = lp.gettoken_enum(2,"MIDI\0OSC\0OMNI-MIDI\0OMNI-OSC\0"))<0 ||
+          (this_type < 2 && lp.getnumtokens()<4))
         {
           results.Append("\tUsage: @input devicehandle MIDI \"substring devicename match\" [skip_count]\r\n");
           results.Append("\tUsage: @input devicehandle OSC \"1.2.3.4:port\"\r\n");
           results.Append("\tUsage: @input devicehandle OSC \"*:port\"\r\n");
+          results.Append("\tUsage: @input devicehandle OMNI-MIDI\r\n");
+          results.Append("\tUsage: @input devicehandle OMNI-OSC\r\n");
         }
         else
         {
@@ -891,7 +894,16 @@ void scriptInstance::load_script(WDL_FastString &results)
           }
           else
           {
-            if (this_type==1) // OSC
+            if (this_type==3||this_type==2) // OMNI-OSC or OMNI-MIDI
+            {
+              omniInputDevice *r = new omniInputDevice(this_type == 3 ? "OSC" : "MIDI");
+              EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+              if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+              r->addinst(messageCallback,this,dev_idx);
+              m_in_devs.Add(r);
+              // do NOT add OMNI instances to g_inputs! :)
+            }
+            else if (this_type==1) // OSC
             {
               char buf[512];
               const char *dp=lp.gettoken_str(3);
@@ -1342,6 +1354,34 @@ void load_all_scripts(WDL_FastString &results)
   results.Append("\r\n");
   for (x=0;x<80;x++) results.Append("=");
   results.Append("\r\n");
+
+  // propagate any input instances to omni
+  for (x=0;x<g_inputs.GetSize();x++)
+  {
+    inputDevice *dev = g_inputs.Get(x);
+    const char *dev_type = dev->get_type();
+    int i;
+    for (i=0;i<g_scripts.GetSize();i++)
+    {
+      scriptInstance *scr = g_scripts.Get(i);
+      if (scr->m_in_devs.Find(dev)>=0) continue;
+
+      int a;
+      for (a=0;a<scr->m_in_devs.GetSize();a++)
+      {
+        inputDevice *thisdev = scr->m_in_devs.Get(a);
+        if (!strcmp(thisdev->get_type(),"OMNI"))
+        {
+          omniInputDevice *omni = (omniInputDevice *)thisdev;
+          if (!strcmp(omni->getOmniType(),dev_type))
+          {
+            omni->copyRecsTo(dev);
+            break;
+          }
+        }
+      }
+    }
+  }
 
 
   for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->start(results);

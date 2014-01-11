@@ -53,6 +53,28 @@ class inputDevice {
     }
 };
 
+class omniInputDevice  : public inputDevice {
+  const char *m_required_mode;
+public:
+  omniInputDevice(const char *required_mode) { m_required_mode=required_mode; }
+  virtual ~omniInputDevice() {}
+
+  virtual void start() { }
+  virtual void run(WDL_FastString &textOut) { }
+  virtual const char *get_type() { return "OMNI"; }
+
+  const char *getOmniType() { return m_required_mode; }
+  void copyRecsTo(inputDevice *dest)
+  {
+    int x;
+    for(x=0;x<m_instances.GetSize();x++)
+    {
+      rec *r=m_instances.Get()+x;
+      dest->addinst(r->callback,r->data1,r->data2);
+    }
+  }
+};
+
 
 
 class midiOutputDevice : public outputDevice
