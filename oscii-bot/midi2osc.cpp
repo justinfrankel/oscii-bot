@@ -1924,6 +1924,26 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
       g_outputs.Empty(true);
       g_scripts.Empty(true);
     break;
+    case SWELLAPP_PROCESSMESSAGE:
+      if (parm1)
+      {
+        MSG *msg = (MSG *)parm1;
+        if (msg->hwnd && (msg->message == WM_KEYDOWN || msg->message == WM_KEYUP || msg->message == WM_CHAR))
+        {
+          int x;
+          for(x=0;x<g_scripts.GetSize();x++)
+          {
+            scriptInstance *scr = g_scripts.Get(x);
+            if (scr->m_lice_state && scr->m_lice_state->hwnd_standalone == msg->hwnd)
+            {
+              SendMessage(msg->hwnd,msg->message,msg->wParam,msg->lParam);
+              return 1;
+            }
+          }
+
+        }
+      }
+    break;
   }
   return 0;
 }
