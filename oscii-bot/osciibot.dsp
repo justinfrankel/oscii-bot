@@ -335,6 +335,10 @@ SOURCE=..\WDL\lice\lice.cpp
 # End Source File
 # Begin Source File
 
+SOURCE=..\WDL\lice\lice_image.cpp
+# End Source File
+# Begin Source File
+
 SOURCE=..\WDL\lice\lice_line.cpp
 # End Source File
 # Begin Source File
