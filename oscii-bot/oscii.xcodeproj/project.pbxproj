@@ -19,6 +19,7 @@
 		33AA313E185A7E8D001D767E /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 33AA313C185A7E8D001D767E /* InfoPlist.strings */; };
 		33AA3140185A7E8D001D767E /* osciiTests.m in Sources */ = {isa = PBXBuildFile; fileRef = 33AA313F185A7E8D001D767E /* osciiTests.m */; };
 		33B178E818872C7000EBE95C /* lice_image.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 33B178E718872C7000EBE95C /* lice_image.cpp */; };
+		33B178EA1888391E00EBE95C /* lice_arc.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 33B178E91888391E00EBE95C /* lice_arc.cpp */; };
 		33F5F0931880C5D400D90E87 /* lice_line.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 33F5F08E1880C5D400D90E87 /* lice_line.cpp */; };
 		33F5F0941880C5D400D90E87 /* lice_png.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 33F5F08F1880C5D400D90E87 /* lice_png.cpp */; };
 		33F5F0951880C5D400D90E87 /* lice_text.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 33F5F0901880C5D400D90E87 /* lice_text.cpp */; };
@@ -110,6 +111,7 @@
 		33AA313D185A7E8D001D767E /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		33AA313F185A7E8D001D767E /* osciiTests.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = osciiTests.m; sourceTree = "<group>"; };
 		33B178E718872C7000EBE95C /* lice_image.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = lice_image.cpp; path = ../../WDL/lice/lice_image.cpp; sourceTree = "<group>"; };
+		33B178E91888391E00EBE95C /* lice_arc.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = lice_arc.cpp; path = ../../WDL/lice/lice_arc.cpp; sourceTree = "<group>"; };
 		33F5F08E1880C5D400D90E87 /* lice_line.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = lice_line.cpp; path = ../../WDL/lice/lice_line.cpp; sourceTree = "<group>"; };
 		33F5F08F1880C5D400D90E87 /* lice_png.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = lice_png.cpp; path = ../../WDL/lice/lice_png.cpp; sourceTree = "<group>"; };
 		33F5F0901880C5D400D90E87 /* lice_text.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = lice_text.cpp; path = ../../WDL/lice/lice_text.cpp; sourceTree = "<group>"; };
@@ -322,6 +324,7 @@
 		33F5F08D1880C5A000D90E87 /* lice */ = {
 			isa = PBXGroup;
 			children = (
+				33B178E91888391E00EBE95C /* lice_arc.cpp */,
 				33B178E718872C7000EBE95C /* lice_image.cpp */,
 				33F5F0991880C5DD00D90E87 /* zlib */,
 				33F5F0981880C5D800D90E87 /* libpng */,
@@ -534,6 +537,7 @@
 				33F5F0D31880C64600D90E87 /* pngrtran.c in Sources */,
 				33F5F0931880C5D400D90E87 /* lice_line.cpp in Sources */,
 				33F965AD185A8735004C7070 /* midi_osx.cpp in Sources */,
+				33B178EA1888391E00EBE95C /* lice_arc.cpp in Sources */,
 				33F965A6185A840D004C7070 /* nseel-cfunc.c in Sources */,
 				33F5F0D21880C64600D90E87 /* pngrio.c in Sources */,
 				33F5F0D71880C64600D90E87 /* pngwio.c in Sources */,
