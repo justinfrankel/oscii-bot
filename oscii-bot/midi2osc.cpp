@@ -740,8 +740,12 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, INT_PTR np, EEL_F 
       _this->GetStringForIndex(parms[2][0],&wr);
       if (wr)
       {
-        if (c=='s') wr->Set((const char *)ptr);
-        else wr->Set("");
+        if (c=='s') 
+        {
+          wr->Set((const char *)ptr);
+          return 1.0;
+        }
+        wr->Set("");
       }
     }
 
@@ -751,6 +755,8 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, INT_PTR np, EEL_F 
     {
       const char *s=(const char *)ptr;
       int idx2=(idx>>16)&1023;
+      if (idx2==0 && !*s) return 0.001; // return nonzero if an empty string and requesting first character
+
       while (idx2>0 && *s) { s++; idx2--; }
       return (EEL_F)*s;
     }
