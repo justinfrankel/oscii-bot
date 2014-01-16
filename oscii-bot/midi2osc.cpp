@@ -281,7 +281,7 @@ class scriptInstance
   
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
-    static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr);
+    static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, INT_PTR np, EEL_F **parms);
 };
 
@@ -720,19 +720,31 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, E
 }
 
 
-EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, EEL_F *parmidx, EEL_F *typeptr)
+EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, INT_PTR np, EEL_F **parms)
 {
   scriptInstance *_this = (scriptInstance*)opaque;
-  *typeptr = 0.0;
-  if (_this && _this->m_cur_oscmsg)
+  if (np > 1) parms[1][0] = 0.0;
+  if (_this && _this->m_cur_oscmsg && np > 0)
   {
-    const int idx = (int) (*parmidx);
+    const int idx = (int) parms[0][0];
 
     char c=0;
     const void *ptr=_this->m_cur_oscmsg->GetIndexedArg(idx&65535,&c);
     if (!ptr) return 0.0;
 
-    *typeptr = (EEL_F)c;
+    if (np > 1) parms[1][0] = (EEL_F)c;
+
+    if (np > 2)
+    {
+      WDL_FastString *wr=NULL;
+      _this->GetStringForIndex(parms[2][0],&wr);
+      if (wr)
+      {
+        if (c=='s') wr->Set((const char *)ptr);
+        else wr->Set("");
+      }
+    }
+
     if (c=='f') return (EEL_F) *(const float *)ptr;
     if (c=='i') return (EEL_F) *(const int *)ptr;
     if (c=='s') 
@@ -1646,7 +1658,7 @@ void initialize()
   NSEEL_addfunc_varparm("oscsend",2,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
   NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
   NSEEL_addfunc_varparm("oscmatch",1,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
-  NSEEL_addfunctionex("oscparm",2,(char *)_asm_generic2parm_retd,(char *)_asm_generic2parm_retd_end-(char *)_asm_generic2parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
+  NSEEL_addfunc_varparm("oscparm",1,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
 
   EEL_string_register();
   EEL_file_register();
