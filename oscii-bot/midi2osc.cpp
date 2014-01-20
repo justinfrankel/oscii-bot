@@ -1037,7 +1037,6 @@ void scriptInstance::import_script(const char *fn, const char *callerfn, WDL_Fas
   NSEEL_CODEHANDLE ch=NSEEL_code_compile_ex(m_vm,curblock.Get(),0,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);  
   if (ch)
   {
-    results.AppendFormatted(512,"\t--proc %s complete\r\n",fn);
     m_imported_code.Add(ch);
   }
   else
