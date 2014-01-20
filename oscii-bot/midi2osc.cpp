@@ -278,7 +278,15 @@ class scriptInstance
     NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
 
     const OscMessageRead *m_cur_oscmsg;
-  
+ 
+    struct evalCacheEnt {
+      char *str;
+      NSEEL_CODEHANDLE ch;
+    };
+    WDL_TypedBuf<evalCacheEnt> m_eval_cache;
+    char *evalCacheGet(const char *str, NSEEL_CODEHANDLE *ch);
+    void evalCacheDispose(char *key, NSEEL_CODEHANDLE ch);
+    
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, INT_PTR np, EEL_F **parms);
@@ -312,6 +320,14 @@ class scriptInstance
 #define EEL_LICE_WANT_STANDALONE
 
 #include "../WDL/eel2/eel_lice.h"
+
+#include "../WDL/eel2/eel_misc.h"
+
+#define EEL_EVAL_GET_CACHED(str, ch) ((scriptInstance *)opaque)->evalCacheGet(str,&(ch))
+#define EEL_EVAL_SET_CACHED(str, ch) ((scriptInstance *)opaque)->evalCacheDispose(str,ch)
+#define EEL_EVAL_GET_VMCTX(opaque) (((scriptInstance *)opaque)->m_vm)
+
+#include "../WDL/eel2/eel_eval.h"
 
 scriptInstance::scriptInstance(const char *fn, WDL_FastString &results) 
 { 
@@ -354,6 +370,12 @@ void scriptInstance::clear()
     if (m_code[x]) NSEEL_code_free(m_code[x]);
     m_code[x]=0;
   }
+  for (x=0;x<m_eval_cache.GetSize();x++)
+  {
+    free(m_eval_cache.Get()[x].str);
+    NSEEL_code_free(m_eval_cache.Get()[x].ch);
+  }
+
   if (m_vm) NSEEL_VM_free(m_vm);
   m_vm=0;
   m_incoming_events.Resize(0,false);
@@ -393,7 +415,39 @@ EEL_F *scriptInstance::GetVarForFormat(int formatidx)
   return m_eel_string_state->GetVarForFormat(formatidx);
 }
 
+char *scriptInstance::evalCacheGet(const char *str, NSEEL_CODEHANDLE *ch)
+{
+  // should mutex protect if multiple threads access this sInst context
+  int x=m_eval_cache.GetSize();
+  while (--x >= 0)
+  {
+    char *ret;
+    if (!strcmp(ret=m_eval_cache.Get()[x].str, str))
+    {
+      *ch = m_eval_cache.Get()[x].ch;
+      m_eval_cache.Delete(x);
+      return ret;
+    }
+  }
+  return NULL;
+}
 
+void scriptInstance::evalCacheDispose(char *key, NSEEL_CODEHANDLE ch)
+{
+  // should mutex protect if multiple threads access this sInst context
+  evalCacheEnt ecc;
+  ecc.str= key;
+  ecc.ch = ch;
+  if (m_eval_cache.GetSize() > 1024) 
+  {
+    NSEEL_code_free(m_eval_cache.Get()->ch);
+    free(m_eval_cache.Get()->str);
+    m_eval_cache.Delete(0);
+  }
+  m_eval_cache.Add(ecc);
+}
+
+    
 
 WDL_PtrList<scriptInstance> g_scripts;
 WDL_PtrList<inputDevice> g_inputs,g_omni_inputs_fordelete; // these are owned here, scriptInstances reference them
@@ -1668,8 +1722,11 @@ void initialize()
 
   EEL_string_register();
   EEL_file_register();
+  EEL_misc_register();
+  EEL_eval_register();
 
   eel_lice_register();
+
   HICON icon=NULL;
 #ifdef _WIN32
   icon = LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
