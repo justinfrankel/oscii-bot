@@ -88,7 +88,9 @@ class scriptInstance
     scriptInstance(const char *fn, WDL_FastString &results);
     ~scriptInstance() ;
 
+    void init_vm();
     void load_script(WDL_FastString &results);
+    void import_script(const char *fn, const char *callerfn, WDL_FastString &results);
     void clear();
 
     void start(WDL_FastString &results);
@@ -276,6 +278,9 @@ class scriptInstance
     EEL_F *m_var_time, *m_var_msgs[5], *m_var_fmt[MAX_OSC_FMTS];
     NSEEL_VMCTX m_vm;
     NSEEL_CODEHANDLE m_code[4]; // init, timer, message code, oscmsg code
+    WDL_PtrList<void> m_imported_code; // NSEEL_CODEHANDLE, for @import etc
+
+    WDL_StringKeyedArray<bool> m_loaded_fnlist; // @import-ed file list
 
     const OscMessageRead *m_cur_oscmsg;
  
@@ -329,33 +334,29 @@ class scriptInstance
 
 #include "../WDL/eel2/eel_eval.h"
 
-scriptInstance::scriptInstance(const char *fn, WDL_FastString &results) 
+scriptInstance::scriptInstance(const char *fn, WDL_FastString &results)  : m_loaded_fnlist(false)
 { 
-  memset(m_handles,0,sizeof(m_handles));
   m_debugOut=0;
   m_fn.Set(fn);
   m_vm=0;
   m_cur_oscmsg=0;
   memset(m_code,0,sizeof(m_code));
+  memset(m_handles,0,sizeof(m_handles));
   m_eel_string_state = new eel_string_context_state;
   m_lice_state=0;
+
+  m_var_time = 0;
+  memset(m_var_msgs,0,sizeof(m_var_msgs));
+  memset(m_var_fmt,0,sizeof(m_var_fmt));
   
-  clear();
+  init_vm();
   load_script(results);
-  m_lice_state = new eel_lice_state(m_vm,this,1024,64);
 }
 
 scriptInstance::~scriptInstance() 
 {
   clear();
-  int x;
-  for (x=0;x<MAX_FILE_HANDLES;x++) 
-  {
-    if (m_handles[x]) fclose(m_handles[x]); 
-    m_handles[x]=0;
-  }
   delete m_eel_string_state;
-  delete m_lice_state;
 }
 
 void scriptInstance::clear()
@@ -365,6 +366,11 @@ void scriptInstance::clear()
   m_out_devs.Empty();
   m_eel_string_state->clear_state(true);
   int x;
+  for (x=0;x<MAX_FILE_HANDLES;x++) 
+  {
+    if (m_handles[x]) fclose(m_handles[x]); 
+    m_handles[x]=0;
+  }
   for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
   {
     if (m_code[x]) NSEEL_code_free(m_code[x]);
@@ -375,14 +381,21 @@ void scriptInstance::clear()
     free(m_eval_cache.Get()[x].str);
     NSEEL_code_free(m_eval_cache.Get()[x].ch);
   }
+  m_eval_cache.Resize(0);
 
-  if (m_vm) NSEEL_VM_free(m_vm);
+  m_imported_code.Empty((void (*)(void *))NSEEL_code_free);
+  m_loaded_fnlist.DeleteAll();
+
+  NSEEL_VM_free(m_vm);
   m_vm=0;
   m_incoming_events.Resize(0,false);
 
   m_var_time = 0;
   memset(m_var_msgs,0,sizeof(m_var_msgs));
   memset(m_var_fmt,0,sizeof(m_var_fmt));
+
+  delete m_lice_state;
+  m_lice_state=0;
 }
 
 void scriptInstance::start(WDL_FastString &results)
@@ -885,14 +898,12 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
 }
 
 
-void scriptInstance::load_script(WDL_FastString &results)
+void scriptInstance::init_vm()
 {
-  clear();
-
   m_vm = NSEEL_VM_alloc();
   NSEEL_VM_SetCustomFuncThis(m_vm,this);
   eel_string_initvm(m_vm);
-
+  m_lice_state = new eel_lice_state(m_vm,this,1024,64);
 
   m_var_time = NSEEL_VM_regvar(m_vm,"time");
   m_var_msgs[0] = NSEEL_VM_regvar(m_vm,"msg1");
@@ -909,16 +920,146 @@ void scriptInstance::load_script(WDL_FastString &results)
     sprintf(tmp,"fmt%d",x);
     m_var_fmt[x] = NSEEL_VM_regvar(m_vm,tmp);
   }
+}
 
+void scriptInstance::import_script(const char *fn, const char *callerfn, WDL_FastString &results)
+{
+  FILE *fp=NULL;
+  WDL_FastString usefn;
+  // resolve path relative to current
+  int x;
+  for (x=0;x<2; x ++)
+  {
+#ifdef _WIN32
+    if (!x && ((fn[0] == '\\' && fn[1] == '\\') || (fn[0] && fn[1] == ':')))
+#else
+    if (!x && fn[0] == '/')
+#endif
+    {
+      usefn.Set(fn);
+    }
+    else
+    {
+      const char *fnu = fn;
+      if (x)
+      {
+        while (*fnu) fnu++;
+        while (fnu >= fn && *fnu != '\\' && *fnu != '/') fnu--;
+        if (fnu < fn) break;
+        fnu++;
+      }
+
+      usefn.Set(callerfn);
+      int l=usefn.GetLength();
+      while (l > 0 && usefn.Get()[l-1] != '\\' && usefn.Get()[l-1] != '/') l--;
+      if (l > 0) 
+      {
+        usefn.SetLen(l);
+        usefn.Append(fnu);
+      }
+      else
+      {
+        usefn.Set(fnu);
+      }
+      int last_slash_pos=-1;
+      for (l = 0; l < usefn.GetLength(); l ++)
+      {
+        if (usefn.Get()[l] == '/' || usefn.Get()[l] == '\\')
+        {
+          if (usefn.Get()[l+1] == '.' && usefn.Get()[l+2] == '.' && 
+              (usefn.Get()[l+3] == '/' || usefn.Get()[l+3] == '\\'))
+          {
+            if (last_slash_pos >= 0)
+              usefn.DeleteSub(last_slash_pos, l+3-last_slash_pos);
+            else
+              usefn.DeleteSub(0,l+3+1);
+          }
+          else
+          {
+            last_slash_pos=l;
+          }
+        }
+      // take currentfn, remove filename part, add fnu
+      }
+    }
+
+    fp = fopen(usefn.Get(),"r");
+    if (fp) 
+    {
+      if (m_loaded_fnlist.Get(usefn.Get())) 
+      {
+        fclose(fp);
+        return; // already imported
+      }
+      m_loaded_fnlist.Insert(usefn.Get(),true);
+      fn = usefn.Get();
+      break;
+    }
+  }
+  if (!fp)
+  {
+    results.AppendFormatted(512,"\tWarning: @import could not open '%s' (%s)\r\n",fn,usefn.Get());
+    return;
+  }
+
+  bool comment_state=false;
+  WDL_FastString curblock;
+  for (;;)
+  {
+    char linebuf[8192];
+    linebuf[0]=0;
+    fgets(linebuf,sizeof(linebuf),fp);
+
+    if (!linebuf[0]) break;
+
+    {
+      char *p=linebuf;
+      while (*p) p++;
+      p--;
+      while (p >= linebuf && (*p == '\r' || *p == '\n')) { *p=0; p--; }
+    }
+
+    LineParser lp(comment_state);
+    if (linebuf[0] && !lp.parse(linebuf) && lp.getnumtokens()> 0 && lp.gettoken_str(0)[0] == '@')
+    {
+      if (!strcmp(lp.gettoken_str(0),"@import"))
+      {
+        if (lp.getnumtokens()>1)
+          import_script(lp.gettoken_str(1),fn,results);
+      }
+      curblock.Append(";");
+    }
+    else curblock.Append(linebuf);
+    curblock.Append("\n");
+  }
+  fclose(fp);
+
+  NSEEL_CODEHANDLE ch=NSEEL_code_compile_ex(m_vm,curblock.Get(),0,NSEEL_CODE_COMPILE_FLAG_COMMONFUNCS);  
+  if (ch)
+  {
+    results.AppendFormatted(512,"\t--proc %s complete\r\n",fn);
+    m_imported_code.Add(ch);
+  }
+  else
+  {
+    const char *err=NSEEL_code_getcodeerror(m_vm);
+    if (err)
+      results.AppendFormatted(512,"\tWarning:%s:%s\r\n",fn,err);
+  }
+}
+
+void scriptInstance::load_script(WDL_FastString &results)
+{
   results.Append(m_fn.Get());
   results.Append("\r\n");
 
   FILE *fp = fopen(m_fn.Get(),"r");
   if (!fp)
   {
-    results.Append("\tError: failed opening filed.");
+    results.Append("\tError: failed opening script.");
     return;
   }
+  m_loaded_fnlist.Insert(m_fn.Get(),true);
 
   bool comment_state=false;
   int parsestate=-1,cursec_lineoffs=0,lineoffs=0;
@@ -952,6 +1093,17 @@ void scriptInstance::load_script(WDL_FastString &results)
         parsestate=x;
         cursec_lineoffs=lineoffs;
         curblock.Set("");
+      }
+      else if (!strcmp(tok,"@import"))
+      {
+        if (lp.getnumtokens()!=2)
+        {
+          results.Append("\tUsage: @import filename\r\n");
+        }
+        else
+        {
+          import_script(lp.gettoken_str(1),m_fn.Get(),results);
+        }
       }
       else if (!strcmp(tok,"@input"))
       {
