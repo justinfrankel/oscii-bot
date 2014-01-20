@@ -70,6 +70,7 @@ WDL_PtrList<char> g_script_load_filenames, g_script_load_paths;
 
 class eel_string_context_state;
 class eel_lice_state;
+class eel_net_state;
 
 class scriptInstance 
 {
@@ -244,6 +245,7 @@ class scriptInstance
 
     eel_string_context_state *m_eel_string_state;
     eel_lice_state *m_lice_state;
+    eel_net_state *m_net_state;
     
     void DebugOutput(const char *fmt, ...)
     {
@@ -328,6 +330,9 @@ class scriptInstance
 
 #include "../WDL/eel2/eel_misc.h"
 
+#define EEL_NET_GET_CONTEXT(opaque) (((scriptInstance *)opaque)->m_net_state)
+#include "../WDL/eel2/eel_net.h"
+
 #define EEL_EVAL_GET_CACHED(str, ch) ((scriptInstance *)opaque)->evalCacheGet(str,&(ch))
 #define EEL_EVAL_SET_CACHED(str, ch) ((scriptInstance *)opaque)->evalCacheDispose(str,ch)
 #define EEL_EVAL_GET_VMCTX(opaque) (((scriptInstance *)opaque)->m_vm)
@@ -344,6 +349,7 @@ scriptInstance::scriptInstance(const char *fn, WDL_FastString &results)  : m_loa
   memset(m_handles,0,sizeof(m_handles));
   m_eel_string_state = new eel_string_context_state;
   m_lice_state=0;
+  m_net_state=0;
 
   m_var_time = 0;
   memset(m_var_msgs,0,sizeof(m_var_msgs));
@@ -396,6 +402,8 @@ void scriptInstance::clear()
 
   delete m_lice_state;
   m_lice_state=0;
+  delete m_net_state;
+  m_net_state=0;
 }
 
 void scriptInstance::start(WDL_FastString &results)
@@ -904,6 +912,8 @@ void scriptInstance::init_vm()
   NSEEL_VM_SetCustomFuncThis(m_vm,this);
   eel_string_initvm(m_vm);
   m_lice_state = new eel_lice_state(m_vm,this,1024,64);
+  m_net_state = new eel_net_state(4096,NULL);
+
 
   m_var_time = NSEEL_VM_regvar(m_vm,"time");
   m_var_msgs[0] = NSEEL_VM_regvar(m_vm,"msg1");
@@ -1875,6 +1885,7 @@ void initialize()
   EEL_file_register();
   EEL_misc_register();
   EEL_eval_register();
+  EEL_tcp_register();
 
   eel_lice_register();
 
