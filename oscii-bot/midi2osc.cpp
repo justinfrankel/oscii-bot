@@ -1669,7 +1669,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         const char *vs="Cockos OSCII-bot v" OSCIIBOT_VERSION ;
 #ifdef _WIN32
         HICON icon=LoadIcon(g_hInstance,MAKEINTRESOURCE(IDI_ICON1));
-        SetClassLong(hwndDlg,GCL_HICON,(LPARAM)icon);
+        SetClassLongPtr(hwndDlg,GCLP_HICON,(LPARAM)icon);
         systray_add(hwndDlg, 0, (HICON)icon, (char*)vs);
 #endif
         SetWindowText(hwndDlg,vs);

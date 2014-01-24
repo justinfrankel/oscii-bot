@@ -1,0 +1,310 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;hm;inl;inc;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Source Files\WDL">
+      <UniqueIdentifier>{26d63633-dc60-4f96-afe7-14e5aa4ad154}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\WDL\jnetlib">
+      <UniqueIdentifier>{5e7e7d78-c770-4acb-a4f5-38f40947dd01}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\WDL\eel2">
+      <UniqueIdentifier>{3ef7fdac-d7f3-478e-9c31-db0d4d844ba8}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\WDL\lice">
+      <UniqueIdentifier>{fc51ac14-51f0-4899-ae4b-87258d07a4ee}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\WDL\lice\pnglib">
+      <UniqueIdentifier>{f20ca8a2-530f-455c-a39d-3a49a94e6403}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\WDL\lice\zlib">
+      <UniqueIdentifier>{68883103-48ba-4120-a820-3e1c0b32de56}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="ReadMe.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="stdafx.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="targetver.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="oscmsg.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="device.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="resource.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\eel_files.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\eel_lice.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\eel_mdct.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\eel_misc.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\eel_net.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\eel_strings.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\glue_port.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\glue_ppc.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\glue_x86.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\glue_x86_64.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\ns-eel.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\ns-eel-addfuncs.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\eel2\ns-eel-int.h">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\lice\lice.h">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\lice\lice_combine.h">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\lice\lice_text.h">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\crc32.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\deflate.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\inffast.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\inffixed.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\inflate.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\inftrees.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\trees.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\zconf.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\zlib.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\zlib\zutil.h">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\png.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\pngconf.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\pngdebug.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\pnginfo.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\pnglibconf.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\pngpriv.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+    <ClInclude Include="..\WDL\libpng\pngstruct.h">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="midi_win32.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="midi2osc.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="oscmsg.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\jnetlib\util.cpp">
+      <Filter>Source Files\WDL\jnetlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-caltab.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-cfunc.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-compiler.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-eval.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-lextab.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-ram.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\eel2\nseel-yylex.c">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_arc.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_bmp.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_ico.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_image.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_line.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_pcx.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_png.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_text.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\lice\lice_textnew.cpp">
+      <Filter>Source Files\WDL\lice</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\adler32.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\compress.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\crc32.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\deflate.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\infback.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\inffast.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\inflate.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\inftrees.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\trees.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\uncompr.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\zlib\zutil.c">
+      <Filter>Source Files\WDL\lice\zlib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\png.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngerror.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngget.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngmem.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngpread.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngread.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngrio.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngrtran.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngrutil.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngset.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngtrans.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngwio.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngwrite.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngwtran.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\libpng\pngwutil.c">
+      <Filter>Source Files\WDL\lice\pnglib</Filter>
+    </ClCompile>
+    <ClCompile Include="..\WDL\wingui\wndsize.cpp">
+      <Filter>Source Files\WDL</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ResourceCompile Include="res.rc">
+      <Filter>Resource Files</Filter>
+    </ResourceCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Object Include="..\WDL\eel2\asm-nseel-x64.obj">
+      <Filter>Source Files\WDL\eel2</Filter>
+    </Object>
+  </ItemGroup>
+</Project>
