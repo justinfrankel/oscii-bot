@@ -1876,10 +1876,10 @@ void initialize()
   JNL::open_socketlib();
 
   NSEEL_init();
-  NSEEL_addfunc_varparm("oscsend",2,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_oscevent);
-  NSEEL_addfunctionex("midisend",1,(char *)_asm_generic1parm_retd,(char *)_asm_generic1parm_retd_end-(char *)_asm_generic1parm_retd,NSEEL_PProc_THIS,(void *)&scriptInstance::_send_midievent);
-  NSEEL_addfunc_varparm("oscmatch",1,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_match);
-  NSEEL_addfunc_varparm("oscparm",1,NSEEL_PProc_THIS,(void *)&scriptInstance::_osc_parm);
+  NSEEL_addfunc_retval("midisend",1,NSEEL_PProc_THIS,&scriptInstance::_send_midievent);
+  NSEEL_addfunc_varparm("oscsend",2,NSEEL_PProc_THIS,&scriptInstance::_send_oscevent);
+  NSEEL_addfunc_varparm("oscmatch",1,NSEEL_PProc_THIS,&scriptInstance::_osc_match);
+  NSEEL_addfunc_varparm("oscparm",1,NSEEL_PProc_THIS,&scriptInstance::_osc_parm);
 
   EEL_string_register();
   EEL_file_register();
