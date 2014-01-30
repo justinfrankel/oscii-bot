@@ -179,14 +179,14 @@ class scriptInstance
 
     EEL_F OpenFile(const char *fn, const char *mode)
     {
-      if (!*fn || !*mode) return -1.0;
+      if (!*fn || !*mode) return 0.0;
 
       int x;
       for (x=0;x<MAX_FILE_HANDLES && m_handles[x];x++);
       if (x>= MAX_FILE_HANDLES) 
       {
         DebugOutput("fopen(): no free file handles");
-        return -1.0;
+        return 0.0;
       }
 
       WDL_FastString tmp;
@@ -196,7 +196,7 @@ class scriptInstance
       if (!fp) 
       {
         DebugOutput("fopen(): Failed opening file %s(\"%s\")",tmp.Get(),mode);
-        return -1.0;
+        return 0.0;
       }
       m_handles[x]=fp;
       return x + FILE_HANDLE_INDEX_BASE;
