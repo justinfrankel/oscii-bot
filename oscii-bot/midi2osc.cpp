@@ -1966,15 +1966,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 {
   g_hInstance = hInstance;
 
-  char exepath[2048];
-  exepath[0]=0;
-  GetModuleFileName(NULL,exepath,sizeof(exepath));
-  char *p=exepath;
-  while (*p) p++;
-  while (p >= exepath && *p != '\\') p--; *++p=0;
-  
-  if (exepath[0])
-    g_default_script_path.Set(exepath,(int)strlen(exepath)-1);
+  char tmp[2048];
+  tmp[0]=0;
+  GetModuleFileName(NULL,tmp,sizeof(tmp));
+  WDL_remove_filepart(tmp);
+  g_default_script_path.Set(tmp);
 
   {
     FILE *fp = NULL;
@@ -2096,15 +2092,11 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
   {
     case SWELLAPP_ONLOAD:
       {
-        char exepath[2048];
-        exepath[0]=0;
-        GetModuleFileName(NULL,exepath,sizeof(exepath));
-        char *p=exepath;
-        while (*p) p++;
-        while (p >= exepath && *p != '/') p--; *++p=0;
-        
-        if (exepath[0])
-          g_default_script_path.Set(exepath,strlen(exepath)-1);
+        char tmp[2048];
+        tmp[0]=0;
+        GetModuleFileName(NULL,tmp,sizeof(tmp));
+        WDL_remove_filepart(tmp);
+        g_default_script_path.Set(tmp);
         
         FILE *fp=NULL;
         if (g_default_script_path.Get()[0])
