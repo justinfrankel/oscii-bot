@@ -107,7 +107,7 @@ class scriptInstance
         {
           const char *p= str+ oldlen-2;
           while (p >= str && *p != '\n') p--;
-          m_debugOut->SetLen(p-str + 1);
+          m_debugOut->SetLen((int) (p-str + 1));
         }
 
         while (buf[0])
@@ -224,7 +224,7 @@ class scriptInstance
     bool run(double curtime, WDL_FastString &results);
     static void messageCallback(void *d1, void *d2, char type, int msglen, void *msg);
 
-    WDL_String m_fn;
+    WDL_FastString m_fn;
     WDL_FastString *m_debugOut;
 
     struct incomingEvent
@@ -714,7 +714,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, E
         }
 
         char buf[1024+128];
-        if (eel_format_strings(opaque,fmt,NULL,buf,sizeof(buf), max(np-2-nv,0), parms+2+nv))
+        if (eel_format_strings(opaque,fmt,NULL,buf,(int)sizeof(buf), max((int)np-2-nv,0), parms+2+nv))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);
@@ -854,7 +854,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, INT_PTR np, EEL_F
 
       if (msg) return eel_string_match(opaque,fmt,msg,0,true,
           fmt + (fmt_wr ? fmt_wr->GetLength() : strlen(fmt)),msg+strlen(msg), 
-          np-1, parms+1)
+          (int)np-1, parms+1)
         ? 1.0 : 0.0;
     }
   }
@@ -1974,7 +1974,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
   while (p >= exepath && *p != '\\') p--; *++p=0;
   
   if (exepath[0])
-    g_default_script_path.Set(exepath,strlen(exepath)-1);
+    g_default_script_path.Set(exepath,(int)strlen(exepath)-1);
 
   {
     FILE *fp = NULL;
