@@ -1507,6 +1507,7 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
               OSC_MAKEINTMEM4BE(&rd_sz);
               rd_pos += 20;
             }
+            if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
             while (rd_pos + rd_sz <= evt->sz && rd_sz>=0)
             {
               OscMessageRead rmsg((char*)evt->msg + rd_pos, rd_sz);
