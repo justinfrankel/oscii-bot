@@ -2,7 +2,7 @@ rm -fr OSCII-bot-src
 mkdir OSCII-bot-src/
 mkdir OSCII-bot-src/oscii.xcodeproj
 cp oscii.xcodeproj/project.pbxproj OSCII-bot-src/oscii.xcodeproj/
-cp -a oscii *.cpp *.h *.rc *.ico *.ds? makedist.sh  OSCII-bot-src/
+cp -a oscii *.cpp *.h *.rc *.ico *.ds? *.sln *.vcxproj *.vcxproj.filters makedist.sh  OSCII-bot-src/
 
 mkdir SampleScripts
 cp *.txt SampleScripts/

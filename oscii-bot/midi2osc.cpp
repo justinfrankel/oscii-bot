@@ -1,8 +1,8 @@
 // OSCII-bot
-// Copyright (C) 2013 Cockos Incorporated
+// Copyright (C) 2014 Cockos Incorporated
 // License: GPL
 
-#define OSCIIBOT_VERSION "0.2"
+#define OSCIIBOT_VERSION "0.3"
 #ifdef _WIN32
 #include <windows.h>
 #else
