@@ -391,16 +391,7 @@ static void writeWithHTMLEntities(FILE *fp, const char *rd, int rdsz, WDL_PtrLis
 void doc_Generate()
 {
   char fn[1024];
-#ifdef _WIN32
-  GetTempPath(sizeof(fn), fn);
-#else
-  {
-    const char *p = getenv("TMPDIR");
-    if (!p || !*p) p="/tmp";
-    lstrcpyn(fn, p, 512);
-    if (!fn[0] || fn[strlen(fn)-1] != '/') strcat(fn,"/");
-  }
-#endif
+  GetTempPath(512, fn);
   strcat(fn,"oscii-bot-doc.html");
   FILE *fp = fopen(fn,"wb");
   if (!fp) 
