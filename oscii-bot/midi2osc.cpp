@@ -395,10 +395,10 @@ void doc_Generate()
   GetTempPath(sizeof(fn), fn);
 #else
   {
-    const char *p = getenv("TEMP");
+    const char *p = getenv("TMPDIR");
     if (!p || !*p) p="/tmp";
     lstrcpyn(fn, p, 512);
-    strcat(fn,"/");
+    if (!fn[0] || fn[strlen(fn)-1] != '/') strcat(fn,"/");
   }
 #endif
   strcat(fn,"oscii-bot-doc.html");
