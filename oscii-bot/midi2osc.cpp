@@ -1061,7 +1061,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, E
         }
 
         char buf[1024+128];
-        if (eel_format_strings(opaque,fmt,NULL,buf,(int)sizeof(buf), max((int)np-2-nv,0), parms+2+nv))
+        if (eel_format_strings(opaque,fmt,NULL,buf,(int)sizeof(buf), wdl_max((int)np-2-nv,0), parms+2+nv))
         {
           OscMessageWrite wr;
           wr.PushWord(buf);
