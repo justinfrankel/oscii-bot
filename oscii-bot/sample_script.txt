@@ -6,6 +6,8 @@
 // can use any number of inputs. devicenameforcode must be unique, if you specify multiple @input lines
 // with common devicenameforcode, it will use the first successful line and ignore subsequent lines with that name
 // you can use any number of devices, too
+// note: in OSCII-bot 0.4+, you can send OSC to an input device (which will return it to the last address from which
+// a message was received)
 
 @input r24 MIDI "ZOOM R"
 
@@ -17,6 +19,8 @@
  
 // maxpacketsize is 1024 by default, can lower or raise depending on network considerations
 // sleepamt is 10 by default, sleeps for this many milliseconds after each packet. can be 0 for no sleep.
+// note: in OSCII-bot 0.4+, you can also receive messages from an OSC output device (if the other end sends
+// a message back to the source address)
 
 @output localhost OSC "127.0.0.1:8000"
 

@@ -2,7 +2,7 @@
 // Copyright (C) 2014 Cockos Incorporated
 // License: GPL
 
-#define OSCIIBOT_VERSION "0.3"
+#define OSCIIBOT_VERSION "0.4"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -818,99 +818,62 @@ WDL_PtrList<scriptInstance> g_scripts;
 WDL_PtrList<ioDevice> g_devices,g_omni_inputs_fordelete; // these are owned here, scriptInstances reference them
 omniInputDevice *g_input_omni_outs[2]; // midi,osc
 
-class oscInputDevice : public ioDevice
+class oscDevice : public ioDevice
 {
 public:
-  oscInputDevice(struct sockaddr_in addr)
+  oscDevice(const char *dest, int maxpacket, int sendsleep, struct sockaddr_in *listen_addr) 
   {
-    m_has_input=true;
-    m_recvaddr = addr;
-    m_recvsock=socket(AF_INET, SOCK_DGRAM, 0);
-    if (m_recvsock != INVALID_SOCKET)
+    m_has_output = m_has_input=true;
+    memset(&m_sendaddr, 0, sizeof(m_sendaddr));
+    m_maxpacketsz = maxpacket> 0 ? maxpacket:1024;
+    m_sendsleep = sendsleep >= 0 ? sendsleep : 10;
+
+    m_sendsock=socket(AF_INET, SOCK_DGRAM, 0);
+
+    if (m_sendsock == INVALID_SOCKET)
     {
+    }
+    else if (listen_addr)
+    {
+      m_recvaddr = *listen_addr;
       int on=1;
-      setsockopt(m_recvsock, SOL_SOCKET, SO_BROADCAST, (char*)&on, sizeof(on));
-      if (!bind(m_recvsock, (struct sockaddr*)&m_recvaddr, sizeof(struct sockaddr))) 
+      setsockopt(m_sendsock, SOL_SOCKET, SO_BROADCAST, (char*)&on, sizeof(on));
+      if (!bind(m_sendsock, (struct sockaddr*)&m_recvaddr, sizeof(struct sockaddr))) 
       {
-        SET_SOCK_BLOCK(m_recvsock, false);
+        SET_SOCK_BLOCK(m_sendsock, false);
       }
       else
       {
-        closesocket(m_recvsock);
-        m_recvsock=INVALID_SOCKET;
+        closesocket(m_sendsock);
+        m_sendsock=INVALID_SOCKET;
       }
     }
-  }
-  virtual ~oscInputDevice()
-  {
-    if (m_recvsock != INVALID_SOCKET)
+    else
     {
-      shutdown(m_recvsock, SHUT_RDWR);
-      closesocket(m_recvsock);
-      m_recvsock=INVALID_SOCKET;
-    }
-  }
+      m_dest.Set(dest);
 
-  virtual void start() {  }
+      WDL_String tmp(dest);
+      int sendport=0;
+      char *p=strstr(tmp.Get(),":");
+      if (p) 
+      {
+        *p++=0;
+        sendport=atoi(p);
+      }
+      if (!sendport) sendport=8000;
 
-  virtual void run_output(WDL_FastString &textOut) { }
+      m_sendaddr.sin_family=AF_INET;
+      m_sendaddr.sin_addr.s_addr=inet_addr(tmp.Get());
+      m_sendaddr.sin_port=htons(sendport);
 
-  virtual void run_input(WDL_FastString &textOut)
-  {
-    for (;;)
-    {
-      char buf[16384];
-      buf[0]=0;
-      const int len=(int)recvfrom(m_recvsock, buf, sizeof(buf), 0, 0, 0);
-      if (len<1) break;
-
-      onMessage(1,(const unsigned char *)buf,len);
-    }
-  }
-
-  virtual const char *get_type() { return "OSC"; }
-
-  SOCKET m_recvsock;
-  struct sockaddr_in m_recvaddr;
-  WDL_Queue m_recvq;
-
-};
-
-class oscOutputDevice : public ioDevice
-{
-public:
-  oscOutputDevice(const char *dest, int maxpacket, int sendsleep) 
-  {
-    m_has_output=true;
-    memset(&m_sendaddr, 0, sizeof(m_sendaddr));
-
-    m_dest.Set(dest);
-
-    WDL_String tmp(dest);
-    int sendport=0;
-    char *p=strstr(tmp.Get(),":");
-    if (p) 
-    {
-      *p++=0;
-      sendport=atoi(p);
-    }
-    if (!sendport) sendport=8000;
-
-    m_sendaddr.sin_family=AF_INET;
-    m_sendaddr.sin_addr.s_addr=inet_addr(tmp.Get());
-    m_sendaddr.sin_port=htons(sendport);
-
-    m_maxpacketsz = maxpacket> 0 ? maxpacket:1024;
-    m_sendsleep = sendsleep >= 0 ? sendsleep : 10;
-    m_sendsock=socket(AF_INET, SOCK_DGRAM, 0);
-    if (m_sendsock != INVALID_SOCKET)
-    {
       int on=1;
       setsockopt(m_sendsock, SOL_SOCKET, SO_BROADCAST, (char*)&on, sizeof(on));
+      SET_SOCK_BLOCK(m_sendsock, false);
     }
-
   }
-  virtual ~oscOutputDevice() 
+
+
+  virtual ~oscDevice() 
   { 
     if (m_sendsock != INVALID_SOCKET)
     {
@@ -920,18 +883,30 @@ public:
     }
   } 
 
-  virtual void run_input(WDL_FastString &results) { }
+  virtual void run_input(WDL_FastString &textOut)
+  {
+    if (m_sendsock == INVALID_SOCKET) return;
+    struct sockaddr *p = m_dest.GetLength() ? NULL : (struct sockaddr *)&m_sendaddr;
+    for (;;)
+    {
+      char buf[16384];
+      buf[0]=0;
+      socklen_t plen = (socklen_t) sizeof(m_sendaddr);
+      const int len=(int)recvfrom(m_sendsock, buf, sizeof(buf), 0, p, p?&plen:NULL);
+      if (len<1) break;
+
+      onMessage(1,(const unsigned char *)buf,len);
+    }
+  }
 
   virtual void run_output(WDL_FastString &results)
   {
     static char hdr[16] = { '#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 1, 0, 0, 0 };
 
     // send m_sendq as UDP blocks
-    if (m_sendq.Available()<1) return;
-
     if (m_sendq.Available()<=16)
     {
-      m_sendq.Clear();
+      if (m_sendq.Available()>0) m_sendq.Clear();
       return;
     }
     // m_sendq should begin with a 16 byte pad, then messages in OSC
@@ -940,6 +915,8 @@ public:
     int packetlen=16;
     bool hasbundle=false;
     m_sendq.Advance(16); // skip bundle for now, but keep it around
+
+    SET_SOCK_BLOCK(m_sendsock, true);
 
     while (m_sendq.Available() >= sizeof(int))
     {
@@ -961,7 +938,7 @@ public:
           memcpy(packetstart,hdr,16);
         }
 
-        sendto(m_sendsock, packetstart, packetlen, 0, (struct sockaddr*)&m_sendaddr, sizeof(struct sockaddr));
+        sendto(m_sendsock, packetstart, packetlen, 0, (struct sockaddr*)&m_sendaddr, sizeof(m_sendaddr));
         if (m_sendsleep>0) Sleep(m_sendsleep);
 
         packetstart=(char*)m_sendq.Get()-16; // safe since we padded the queue start
@@ -985,9 +962,10 @@ public:
       {
         memcpy(packetstart,hdr,16);
       }
-      sendto(m_sendsock, packetstart, packetlen, 0, (struct sockaddr*)&m_sendaddr, sizeof(struct sockaddr));
+      sendto(m_sendsock, packetstart, packetlen, 0, (struct sockaddr*)&m_sendaddr, sizeof(m_sendaddr));
       if (m_sendsleep>0) Sleep(m_sendsleep);
     }
+    SET_SOCK_BLOCK(m_sendsock, false);
 
     m_sendq.Clear();
   }
@@ -1008,6 +986,10 @@ public:
   struct sockaddr_in m_sendaddr;
   WDL_Queue m_sendq;
   WDL_String m_dest;
+
+  struct sockaddr_in m_recvaddr;
+  WDL_Queue m_recvq;
+
 };
 
 
@@ -1530,13 +1512,13 @@ void scriptInstance::load_script(WDL_FastString &results)
 
               int x;
               bool is_reuse=false;
-              oscInputDevice *r=NULL;
+              oscDevice *r=NULL;
               for (x=0; x < g_devices.GetSize(); x++)
               {
                 ioDevice *dev = g_devices.Get(x);
                 if (dev && !strcmp(dev->get_type(),"OSC") && dev->m_has_input)
                 {
-                  oscInputDevice *od = (oscInputDevice *)dev;
+                  oscDevice *od = (oscDevice *)dev;
                   if (od->m_recvaddr.sin_port == addr.sin_port && od->m_recvaddr.sin_addr.s_addr == addr.sin_addr.s_addr)
                   {
                     r=od;
@@ -1550,8 +1532,8 @@ void scriptInstance::load_script(WDL_FastString &results)
               }
               if (!r)
               {
-                r = new oscInputDevice(addr);
-                if (r->m_recvsock == INVALID_SOCKET)
+                r = new oscDevice(NULL,0,-1,&addr);
+                if (r->m_sendsock == INVALID_SOCKET)
                 {
                   delete r;
                   r=NULL;
@@ -1664,7 +1646,7 @@ void scriptInstance::load_script(WDL_FastString &results)
             else if (this_type == 1)
             {
               const char *dp = lp.gettoken_str(3);
-              oscOutputDevice *r = NULL;
+              oscDevice *r = NULL;
               int x;
               bool is_reuse=false;
               for (x=0;x<g_devices.GetSize();x++)
@@ -1672,7 +1654,7 @@ void scriptInstance::load_script(WDL_FastString &results)
                 ioDevice *d = g_devices.Get(x);
                 if (d && !strcmp(d->get_type(),"OSC") && d->m_has_output)
                 {
-                  oscOutputDevice *p = (oscOutputDevice *)d;
+                  oscDevice *p = (oscDevice *)d;
                   if (!strcmp(p->m_dest.Get(),dp))
                   {
                     is_reuse=true;
@@ -1685,8 +1667,8 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (!r) 
               {
                 is_reuse=false;
-                r = new oscOutputDevice(dp, lp.getnumtokens()>4 ? lp.gettoken_int(4) : 0,
-                                            lp.getnumtokens()>5 ? lp.gettoken_int(5) : -1);
+                r = new oscDevice(dp, lp.getnumtokens()>4 ? lp.gettoken_int(4) : 0,
+                                      lp.getnumtokens()>5 ? lp.gettoken_int(5) : -1, NULL);
                 if (r->m_sendsock == INVALID_SOCKET)
                 {
                   results.AppendFormatted(1024,"\tWarning: failed creating destination for @output '%s' OSC '%s'\r\n",lp.gettoken_str(1),lp.gettoken_str(3));
@@ -1697,8 +1679,9 @@ void scriptInstance::load_script(WDL_FastString &results)
 
               if (r)
               {
-                EEL_F *var=NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-                if (var) *var=m_devs.GetSize() + DEVICE_INDEX_BASE;
+                EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
+                if (dev_idx) dev_idx[0] = m_devs.GetSize() + DEVICE_INDEX_BASE;
+                r->addinst(messageCallback,this,dev_idx);
                 m_devs.Add(r);
 
                 if (!is_reuse) g_devices.Add(r);
