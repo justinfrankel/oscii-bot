@@ -1883,7 +1883,7 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
   if (m_vm && m_code[1]) NSEEL_code_execute(m_code[1]); // timer follows messages
   m_debugOut=0;
 
-  if (m_lice_state->hwnd_standalone && (needGfxRef || (m_lice_state && m_lice_state->m_framebuffer_refstate)))
+  if (m_lice_state->hwnd_standalone && (needGfxRef || (m_lice_state && m_lice_state->m_framebuffer_dirty)))
   {
     InvalidateRect(m_lice_state->hwnd_standalone,NULL,FALSE);
   }
