@@ -21,8 +21,9 @@
 static MIDIClientRef g_client;
 
 
-midiInputDevice::midiInputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<inputDevice> *reuseDevList) 
+midiInputDevice::midiInputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<ioDevice> *reuseDevList) 
 {
+  m_has_input=true;
   if (!g_client)  MIDIClientCreate(CFSTR("OSCII MIDI IO"), NULL, NULL, &g_client);
 
   m_running=false;
@@ -134,7 +135,7 @@ void midiInputDevice::MyReadProc(const MIDIPacketList *pktlist, void *refCon, vo
   }
 }
 
-void midiInputDevice::do_open(WDL_PtrList<inputDevice> *reuseDevList)
+void midiInputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
 {
   do_close();
   m_lastmsgtime = time(NULL);
@@ -165,8 +166,8 @@ void midiInputDevice::do_open(WDL_PtrList<inputDevice> *reuseDevList)
           int i;
           for (i=0;i<reuseDevList->GetSize();i++)
           {
-            inputDevice *dev=reuseDevList->Get(i);
-            if (dev && !strcmp(dev->get_type(),"MIDI"))
+            ioDevice *dev=reuseDevList->Get(i);
+            if (dev && !strcmp(dev->get_type(),"MIDI") && dev->m_has_input)
             {
               midiInputDevice *mid = (midiInputDevice *)dev;
               if (mid->m_last_dev_idx == x)
@@ -225,7 +226,7 @@ void midiInputDevice::start()
 { 
   m_running=true;
 }
-void midiInputDevice::run(WDL_FastString &textOut)
+void midiInputDevice::run_input(WDL_FastString &textOut)
 {
   int x;
 
@@ -250,8 +251,9 @@ void midiInputDevice::run(WDL_FastString &textOut)
 
 
 
-midiOutputDevice::midiOutputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<outputDevice> *reuseDevList) 
+midiOutputDevice::midiOutputDevice(const char *namesubstr, int skipcnt, WDL_PtrList<ioDevice> *reuseDevList) 
 {
+  m_has_output=true;
   if (!g_client)  MIDIClientCreate(CFSTR("OSCII MIDI IO"), NULL, NULL, &g_client);
 
   // found device!
@@ -273,7 +275,7 @@ midiOutputDevice::~midiOutputDevice()
   free(m_name_used);
 }
 
-void midiOutputDevice::do_open(WDL_PtrList<outputDevice> *reuseDevList)
+void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
 {
   do_close();
   m_failed_time=0;
@@ -301,8 +303,8 @@ void midiOutputDevice::do_open(WDL_PtrList<outputDevice> *reuseDevList)
           int i;
           for (i=0;i<reuseDevList->GetSize();i++)
           {
-            outputDevice *dev=reuseDevList->Get(i);
-            if (dev && !strcmp(dev->get_type(),"MIDI"))
+            ioDevice *dev=reuseDevList->Get(i);
+            if (dev && !strcmp(dev->get_type(),"MIDI") && dev->m_has_output)
             {
               midiOutputDevice *mid = (midiOutputDevice *)dev;
               if (mid->m_last_dev_idx == x)
@@ -351,7 +353,7 @@ void midiOutputDevice::do_close()
 }
 
 
-void midiOutputDevice::run(WDL_FastString &textOut)
+void midiOutputDevice::run_output(WDL_FastString &textOut)
 {
   if (m_failed_time && time(NULL)>m_failed_time+1)
   {

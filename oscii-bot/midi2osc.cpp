@@ -84,8 +84,7 @@ class scriptInstance
     MAX_FILE_HANDLES=128,
     OSC_CURMSG_STRING=8000,
     
-    INPUT_INDEX_BASE =0x400000,
-    OUTPUT_INDEX_BASE=0x500000,
+    DEVICE_INDEX_BASE =0x400000,
     FILE_HANDLE_INDEX_BASE=0x600000
   };
   
@@ -240,8 +239,7 @@ class scriptInstance
 
 
     // these are non-owned refs
-    WDL_PtrList<inputDevice> m_in_devs;
-    WDL_PtrList<outputDevice> m_out_devs;
+    WDL_PtrList<ioDevice> m_devs;
 
     WDL_HeapBuf m_incoming_events;  // incomingEvent list, each is 8-byte aligned
     WDL_Mutex m_incoming_events_mutex;
@@ -715,8 +713,7 @@ scriptInstance::~scriptInstance()
 void scriptInstance::clear()
 {
   m_debugOut=0;
-  m_in_devs.Empty();
-  m_out_devs.Empty();
+  m_devs.Empty();
   m_eel_string_state->clear_state(true);
   int x;
   for (x=0;x<MAX_FILE_HANDLES;x++) 
@@ -818,15 +815,15 @@ void scriptInstance::evalCacheDispose(char *key, NSEEL_CODEHANDLE ch)
     
 
 WDL_PtrList<scriptInstance> g_scripts;
-WDL_PtrList<inputDevice> g_inputs,g_omni_inputs_fordelete; // these are owned here, scriptInstances reference them
-WDL_PtrList<outputDevice> g_outputs;
+WDL_PtrList<ioDevice> g_devices,g_omni_inputs_fordelete; // these are owned here, scriptInstances reference them
 omniInputDevice *g_input_omni_outs[2]; // midi,osc
 
-class oscInputDevice : public inputDevice
+class oscInputDevice : public ioDevice
 {
 public:
   oscInputDevice(struct sockaddr_in addr)
   {
+    m_has_input=true;
     m_recvaddr = addr;
     m_recvsock=socket(AF_INET, SOCK_DGRAM, 0);
     if (m_recvsock != INVALID_SOCKET)
@@ -856,7 +853,9 @@ public:
 
   virtual void start() {  }
 
-  virtual void run(WDL_FastString &textOut)
+  virtual void run_output(WDL_FastString &textOut) { }
+
+  virtual void run_input(WDL_FastString &textOut)
   {
     for (;;)
     {
@@ -877,11 +876,12 @@ public:
 
 };
 
-class oscOutputDevice : public outputDevice
+class oscOutputDevice : public ioDevice
 {
 public:
   oscOutputDevice(const char *dest, int maxpacket, int sendsleep) 
   {
+    m_has_output=true;
     memset(&m_sendaddr, 0, sizeof(m_sendaddr));
 
     m_dest.Set(dest);
@@ -920,7 +920,9 @@ public:
     }
   } 
 
-  virtual void run(WDL_FastString &results)
+  virtual void run_input(WDL_FastString &results) { }
+
+  virtual void run_output(WDL_FastString &results)
   {
     static char hdr[16] = { '#', 'b', 'u', 'n', 'd', 'l', 'e', 0, 0, 0, 0, 0, 1, 0, 0, 0 };
 
@@ -1037,7 +1039,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, E
   if (_this && np > 1)
   {
     int output_idx = (int) floor(parms[0][0]+0.5);
-    outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
+    ioDevice *output = _this->m_devs.Get(output_idx - DEVICE_INDEX_BASE);
     if (!output && output_idx >= 0)
     {
       _this->DebugOutput("oscsend(): output device %f invalid",parms[0][0]);
@@ -1114,15 +1116,14 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_oscevent(void *opaque, INT_PTR np, E
             }
             else if (output_idx==-100)
             {
-              int n;
-              for (n=0;n<g_outputs.GetSize();n++)
-                g_outputs.Get(n)->oscSend(ret,l);
+              for (int n=0;n<g_devices.GetSize();n++)
+                g_devices.Get(n)->oscSend(ret,l);
             }
             else 
             {
               int n;
-              for (n=0;n<_this->m_out_devs.GetSize();n++)
-                _this->m_out_devs.Get(n)->oscSend(ret,l);
+              for (n=0;n<_this->m_devs.GetSize();n++)
+                _this->m_devs.Get(n)->oscSend(ret,l);
             }
           }
           return 1.0;
@@ -1215,7 +1216,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
   if (_this)
   {
     int output_idx = (int) floor(*dest_device+0.5);
-    outputDevice *output = _this->m_out_devs.Get(output_idx - OUTPUT_INDEX_BASE);
+    ioDevice *output = _this->m_devs.Get(output_idx - DEVICE_INDEX_BASE);
     if (!output && output_idx>=0)
     {
       _this->DebugOutput("midisend(): device %f invalid",*dest_device);
@@ -1236,15 +1237,14 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
       }
       else if (output_idx==-100)
       {
-        int n;
-        for (n=0;n<g_outputs.GetSize();n++)
-          g_outputs.Get(n)->midiSend(msg,3);
+        for (int n=0;n<g_devices.GetSize();n++)
+          g_devices.Get(n)->midiSend(msg,3);
       }
       else 
       {
         int n;
-        for (n=0;n<_this->m_out_devs.GetSize();n++)
-          _this->m_out_devs.Get(n)->midiSend(msg,3);
+        for (n=0;n<_this->m_devs.GetSize();n++)
+          _this->m_devs.Get(n)->midiSend(msg,3);
       }
       return 1.0;
     }
@@ -1488,12 +1488,12 @@ void scriptInstance::load_script(WDL_FastString &results)
             {
               omniInputDevice *r = new omniInputDevice(this_type == 3 ? "OSC" : "MIDI");
               EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-              if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+              if (dev_idx) dev_idx[0] = m_devs.GetSize() + DEVICE_INDEX_BASE;
               r->addinst(messageCallback,this,dev_idx);
-              m_in_devs.Add(r);
+              m_devs.Add(r);
               
               g_omni_inputs_fordelete.Add(r);
-              // do NOT add OMNI instances to g_inputs! :)
+              // do NOT add OMNI instances to g_devices! :)
             }
             else if (this_type==5||this_type==4) // OMNI-OSC or OMNI-MIDI
             {
@@ -1502,11 +1502,11 @@ void scriptInstance::load_script(WDL_FastString &results)
 
               omniInputDevice *r = g_input_omni_outs[w];
               EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-              if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+              if (dev_idx) dev_idx[0] = m_devs.GetSize() + DEVICE_INDEX_BASE;
               r->addinst(messageCallback,this,dev_idx);
-              m_in_devs.Add(r);
+              m_devs.Add(r);
               
-              // do NOT add OMNI-OUT instances to g_inputs either! :)
+              // do NOT add OMNI-OUT instances to g_devices either! :)
             }
             else if (this_type==1) // OSC
             {
@@ -1531,10 +1531,10 @@ void scriptInstance::load_script(WDL_FastString &results)
               int x;
               bool is_reuse=false;
               oscInputDevice *r=NULL;
-              for (x=0; x < g_inputs.GetSize(); x++)
+              for (x=0; x < g_devices.GetSize(); x++)
               {
-                inputDevice *dev = g_inputs.Get(x);
-                if (dev && !strcmp(dev->get_type(),"OSC"))
+                ioDevice *dev = g_devices.Get(x);
+                if (dev && !strcmp(dev->get_type(),"OSC") && dev->m_has_input)
                 {
                   oscInputDevice *od = (oscInputDevice *)dev;
                   if (od->m_recvaddr.sin_port == addr.sin_port && od->m_recvaddr.sin_addr.s_addr == addr.sin_addr.s_addr)
@@ -1565,11 +1565,11 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (r)
               {
                 EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-                if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+                if (dev_idx) dev_idx[0] = m_devs.GetSize() + DEVICE_INDEX_BASE;
                 r->addinst(messageCallback,this,dev_idx);
-                m_in_devs.Add(r);
+                m_devs.Add(r);
 
-                if (!is_reuse) g_inputs.Add(r);
+                if (!is_reuse) g_devices.Add(r);
               }
 
 
@@ -1579,7 +1579,7 @@ void scriptInstance::load_script(WDL_FastString &results)
               const char *substr = lp.gettoken_str(3);
               int skipcnt = lp.getnumtokens()>=4 ? lp.gettoken_int(4) : 0;
 
-              midiInputDevice *rec = new midiInputDevice(substr,skipcnt, &g_inputs);
+              midiInputDevice *rec = new midiInputDevice(substr,skipcnt, &g_devices);
               bool is_reuse=false;
               if (!rec->m_handle)
               {
@@ -1601,11 +1601,11 @@ void scriptInstance::load_script(WDL_FastString &results)
                   results.AppendFormatted(1024,"\tWarning: tried to open device matching '%s'(%d) but failed, will retry\r\n",substr,skipcnt);
               }
               EEL_F *dev_idx = NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-              if (dev_idx) dev_idx[0] = m_in_devs.GetSize() + INPUT_INDEX_BASE;
+              if (dev_idx) dev_idx[0] = m_devs.GetSize() + DEVICE_INDEX_BASE;
               rec->addinst(messageCallback,this,dev_idx);
-              m_in_devs.Add(rec);
+              m_devs.Add(rec);
 
-              if (!is_reuse) g_inputs.Add(rec);
+              if (!is_reuse) g_devices.Add(rec);
             }
           }
         }
@@ -1632,7 +1632,7 @@ void scriptInstance::load_script(WDL_FastString &results)
               int skipcnt = lp.getnumtokens()>=4 ? lp.gettoken_int(4) : 0;
 
               bool is_reuse=false;
-              midiOutputDevice *rec = new midiOutputDevice(substr,skipcnt, &g_outputs);
+              midiOutputDevice *rec = new midiOutputDevice(substr,skipcnt, &g_devices);
               if (!rec->m_handle)
               {
                 if (rec->m_open_would_use_altdev)
@@ -1654,10 +1654,10 @@ void scriptInstance::load_script(WDL_FastString &results)
               }
 
               EEL_F *var=NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-              if (var) *var=m_out_devs.GetSize() + OUTPUT_INDEX_BASE;
-              m_out_devs.Add(rec);
+              if (var) *var=m_devs.GetSize() + DEVICE_INDEX_BASE;
+              m_devs.Add(rec);
 
-              if (!is_reuse) g_outputs.Add(rec);
+              if (!is_reuse) g_devices.Add(rec);
 
 
             }
@@ -1667,10 +1667,10 @@ void scriptInstance::load_script(WDL_FastString &results)
               oscOutputDevice *r = NULL;
               int x;
               bool is_reuse=false;
-              for (x=0;x<g_outputs.GetSize();x++)
+              for (x=0;x<g_devices.GetSize();x++)
               {
-                outputDevice *d = g_outputs.Get(x);
-                if (d && !strcmp(d->get_type(),"OSC"))
+                ioDevice *d = g_devices.Get(x);
+                if (d && !strcmp(d->get_type(),"OSC") && d->m_has_output)
                 {
                   oscOutputDevice *p = (oscOutputDevice *)d;
                   if (!strcmp(p->m_dest.Get(),dp))
@@ -1698,10 +1698,10 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (r)
               {
                 EEL_F *var=NSEEL_VM_regvar(m_vm,lp.gettoken_str(1));
-                if (var) *var=m_out_devs.GetSize() + OUTPUT_INDEX_BASE;
-                m_out_devs.Add(r);
+                if (var) *var=m_devs.GetSize() + DEVICE_INDEX_BASE;
+                m_devs.Add(r);
 
-                if (!is_reuse) g_outputs.Add(r);
+                if (!is_reuse) g_devices.Add(r);
               }
             }
           }
@@ -1758,8 +1758,16 @@ void scriptInstance::load_script(WDL_FastString &results)
 
   fclose(fp);
 
-  results.AppendFormatted(512,"\t%d inputs, %d outputs\r\n\r\n",
-      m_in_devs.GetSize(),m_out_devs.GetSize());
+  int n_in=0, n_out=0, n_bidir=0;
+  for (int x=0;x<m_devs.GetSize();x++)
+  {
+    ioDevice *dev = m_devs.Get(x);
+    if (dev->m_has_input && dev->m_has_output) n_bidir++;
+    else if (dev->m_has_input) n_in++;
+    else if (dev->m_has_output) n_out++;
+  }
+  results.AppendFormatted(512,"\t%d inputs, %d outputs, %d bidirectional\r\n\r\n",
+      n_in,n_out,n_bidir);
 }
 
 void scriptInstance::messageCallback(void *d1, void *d2, char type, int len, void *msg)
@@ -1946,8 +1954,7 @@ void load_all_scripts(WDL_FastString &results)
   g_input_omni_outs[0]=NULL;
   delete g_input_omni_outs[1];
   g_input_omni_outs[1]=NULL;
-  g_inputs.Empty(true);
-  g_outputs.Empty(true);
+  g_devices.Empty(true);
   g_scripts.Empty(true);
 
   int x;
@@ -1959,27 +1966,38 @@ void load_all_scripts(WDL_FastString &results)
   for (x=0;x<g_script_load_filenames.GetSize();x++)
     g_scripts.Add(new scriptInstance(g_script_load_filenames.Get(x),results));
 
-  results.AppendFormatted(512,"Total: %d scripts, %d inputs, %d outputs\r\n", g_scripts.GetSize(), g_inputs.GetSize(),g_outputs.GetSize());
+  int n_in=0, n_out=0, n_bidir=0;
+  for (x=0;x<g_devices.GetSize();x++)
+  {
+    ioDevice *dev = g_devices.Get(x);
+    if (dev->m_has_input && dev->m_has_output) n_bidir++;
+    else if (dev->m_has_input) n_in++;
+    else if (dev->m_has_output) n_out++;
+  }
+
+  results.AppendFormatted(512,"Total: %d scripts, %d inputs %d outputs %d bidirectional\r\n", g_scripts.GetSize(), n_in, n_out,n_bidir);
 
   results.Append("\r\n");
   for (x=0;x<80;x++) results.Append("=");
   results.Append("\r\n");
 
   // propagate any input instances to omni
-  for (x=0;x<g_inputs.GetSize();x++)
+  for (x=0;x<g_devices.GetSize();x++)
   {
-    inputDevice *dev = g_inputs.Get(x);
+    ioDevice *dev = g_devices.Get(x);
     const char *dev_type = dev->get_type();
+    if (!dev->m_has_input) continue;
+
     int i;
     for (i=0;i<g_scripts.GetSize();i++)
     {
       scriptInstance *scr = g_scripts.Get(i);
-      if (scr->m_in_devs.Find(dev)>=0) continue;
+      if (scr->m_devs.Find(dev)>=0) continue;
 
       int a;
-      for (a=0;a<scr->m_in_devs.GetSize();a++)
+      for (a=0;a<scr->m_devs.GetSize();a++)
       {
-        inputDevice *thisdev = scr->m_in_devs.Get(a);
+        ioDevice *thisdev = scr->m_devs.Get(a);
         if (!strcmp(thisdev->get_type(),"OMNI"))
         {
           omniInputDevice *omni = (omniInputDevice *)thisdev;
@@ -1996,9 +2014,9 @@ void load_all_scripts(WDL_FastString &results)
 
   for (x=0;x<g_scripts.GetSize(); x++) g_scripts.Get(x)->start(results);
 
-  for (x=0;x<g_inputs.GetSize();x++)
+  for (x=0;x<g_devices.GetSize();x++)
   {
-    inputDevice *rec=g_inputs.Get(x);
+    ioDevice *rec=g_devices.Get(x);
     if (rec) rec->start();
   }
 
@@ -2121,10 +2139,8 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         // periodically update IDC_LASTMSG with new message(s?), if changed
         int x;
         const int asz=results.GetLength();
-        for (x=0;x<g_inputs.GetSize();x++) 
-        {
-          g_inputs.Get(x)->run(results);
-        }
+        for (x=0;x<g_devices.GetSize();x++) 
+          g_devices.Get(x)->run_input(results);
 
         bool needUIupdate=false;
 
@@ -2134,7 +2150,8 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
           if (g_scripts.Get(x)->run(curtime,results)) needUIupdate=true;
         }
 
-        for (x=0;x<g_outputs.GetSize();x++) g_outputs.Get(x)->run(results);  // send queued messages
+        for (x=0;x<g_devices.GetSize();x++) 
+          g_devices.Get(x)->run_output(results);  // send queued messages
 
         if (results.GetLength() != asz||g_force_results_update)
         {
@@ -2393,8 +2410,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine
 
   DialogBox(hInstance,MAKEINTRESOURCE(IDD_DIALOG1), GetDesktopWindow(), mainProc);
 
-  g_inputs.Empty(true);
-  g_outputs.Empty(true);
+  g_devices.Empty(true);
   g_scripts.Empty(true);
 
   ExitProcess(0);
@@ -2496,8 +2512,7 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
     break;
     case SWELLAPP_DESTROY:
       if (g_hwnd) DestroyWindow(g_hwnd);
-      g_inputs.Empty(true);
-      g_outputs.Empty(true);
+      g_devices.Empty(true);
       g_scripts.Empty(true);
     break;
     case SWELLAPP_PROCESSMESSAGE:
