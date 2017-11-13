@@ -65,7 +65,7 @@ void midiInputDevice::ProcessPacket(unsigned char *data, int length, int* lastst
       if (i >= length) break; // no 0xF7, we need to support running sysex dump, which we don't   
       ++i;
       
-//      onMessage(0,i,data);
+      onMessage(0,data,i);
       bytesused=i;
     }
     else if (status >= 0xF4) // 1 byte message

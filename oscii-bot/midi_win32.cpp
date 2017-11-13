@@ -205,6 +205,15 @@ void CALLBACK midiInputDevice::callbackFunc(
       _this->onMessage(0,msg,3);
     }
   }
+  else if (wMsg == MIM_LONGDATA)
+  {
+    MIDIHDR *hdr=(MIDIHDR*)dwParam1;
+    if (_this && hdr->dwBytesRecorded>0 && hdr->lpData)
+    {
+      _this->m_lastmsgtime = GetTickCount();
+      _this->onMessage(0,(unsigned char *)hdr->lpData,hdr->dwBytesRecorded);
+    }
+  }
 }
 
 

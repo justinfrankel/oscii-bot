@@ -83,6 +83,7 @@ class scriptInstance
     MAX_OSC_FMTS=32,
     MAX_FILE_HANDLES=128,
     OSC_CURMSG_STRING=8000,
+    MIDI_CURMSG_STRING=8001,
     
     DEVICE_INDEX_BASE =0x400000,
     FILE_HANDLE_INDEX_BASE=0x600000
@@ -286,6 +287,7 @@ class scriptInstance
     WDL_StringKeyedArray<bool> m_loaded_fnlist; // @import-ed file list
 
     const OscMessageRead *m_cur_oscmsg;
+    WDL_FastString m_cur_midi_sysex_msg;
  
     struct evalCacheEnt {
       char *str;
@@ -428,7 +430,7 @@ void doc_Generate()
 
   fprintf(fp,"<li>@init : begins code that is executed on script load/recompile.\n");
   fprintf(fp,"<li>@timer : begins code that is executed periodically, usually around 100 times per second.\n");
-  fprintf(fp,"<li>@midimsg : begins code that is executed on receipt of a MIDI message. In this case, msg1/msg2/msg3 will be set to the parameters of the MIDI message, and msgdev will receive the MIDI device index\n");
+  fprintf(fp,"<li>@midimsg : begins code that is executed on receipt of a MIDI message. In this case, msg1/msg2/msg3 will be set to the parameters of the MIDI message, and msgdev will receive the MIDI device index. In the case of sysex, msg1/msg2/msg3 will all be 0, and oscstr will be set to a string with the SysEx data.\n");
   fprintf(fp,"<li>@oscmsg : begins code that is executed on receipt of an OSC message. In this case, msgdev will specify the device, oscstr will be set to a string that specifies the OSC message, and see oscparm() to query the values of the OSC parameters. To quickly match the OSC message against various strings, see match() or see oscmatch().\n");
   fprintf(fp,"<li>@import : import functions from other reascripts using <code>@import filename.txt</code> -- note that only the file's functions will be imported, normal code in that file will not be executed.\n");
   fprintf(fp,"</ul>");
@@ -771,6 +773,11 @@ const char *scriptInstance::GetStringForIndex(EEL_F val, WDL_FastString **isWrit
   {
     if (isWriteableAs) *isWriteableAs=NULL;
     return m_cur_oscmsg ? m_cur_oscmsg->GetMessage() : NULL;
+  }
+  else if (idx==MIDI_CURMSG_STRING && m_cur_midi_sysex_msg.GetLength())
+  {
+    if (isWriteableAs) *isWriteableAs=&m_cur_midi_sysex_msg;
+    return m_cur_midi_sysex_msg.Get();
   }
 
   return m_eel_string_state->GetStringForIndex(val,isWriteableAs);
@@ -1802,7 +1809,7 @@ void scriptInstance::messageCallback(void *d1, void *d2, char type, int len, voi
   if (_this && msg)
   {
     // MIDI
-    if (_this->m_incoming_events.GetSize() < 65536)
+    if (_this->m_incoming_events.GetSize() < 65536*8)
     {
       const int this_sz = ((sizeof(incomingEvent) + (len-3)) + 7) & ~7;
 
@@ -1859,7 +1866,19 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
       switch (evt->type)
       {
         case 0:
-          if (evt->sz == 3)
+          if (evt->sz > 3)
+          {
+            if (m_var_msgs[0]) m_var_msgs[0][0] = 0;
+            if (m_var_msgs[1]) m_var_msgs[1][0] = 0;
+            if (m_var_msgs[2]) m_var_msgs[2][0] = 0;
+            if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
+            if (m_var_msgs[4]) m_var_msgs[4][0] = MIDI_CURMSG_STRING;
+            m_cur_midi_sysex_msg.SetRaw((char*)evt->msg,evt->sz);
+            NSEEL_code_execute(m_code[2]);
+            m_cur_midi_sysex_msg.Set("");
+            if (m_var_msgs[4]) m_var_msgs[4][0] = -1;
+          }
+          else if (evt->sz == 3)
           {
             int asInt = (evt->msg[0] << 16) | (evt->msg[1] << 8) | evt->msg[2];
             if (g_recent_events[0] != asInt)
@@ -1873,6 +1892,7 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
             if (m_var_msgs[1]) m_var_msgs[1][0] = evt->msg[1];
             if (m_var_msgs[2]) m_var_msgs[2][0] = evt->msg[2];
             if (m_var_msgs[3]) m_var_msgs[3][0] = evt->dev_ptr ? *evt->dev_ptr : -1.0;
+            if (m_var_msgs[4]) m_var_msgs[4][0] = -1;
             NSEEL_code_execute(m_code[2]);
           }
         break;
