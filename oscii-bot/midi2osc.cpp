@@ -296,6 +296,7 @@ class scriptInstance
     void evalCacheDispose(char *key, NSEEL_CODEHANDLE ch);
     
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, INT_PTR np, EEL_F **parms);
+    static EEL_F NSEEL_CGEN_CALL _send_midievent_str(void *opaque, EEL_F *dest_device, EEL_F *strptr);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, INT_PTR np, EEL_F **parms);
@@ -600,6 +601,7 @@ void doc_Generate()
   while (*p) { fs->Add(p); p += strlen(p) + 1; }
 
   _fs.Add("midisend\tdevice_index\tSends a MIDI event (specified by variables msg1,msg2,msg3) to the device specified by device_index.\n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script. ");
+  _fs.Add("midisend_str\tdevice_index,\"string\"\tSends a MIDI event (specified by the contents of a string) to the device specified by device_index.\n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script. Can be used to send sysex.");
   _fs.Add("oscsend\tdevice_index,\"string\"[,value,...]\tSends an OSC event (specified by \"string\" and one or more parameters specifying values) to device specified by device_index. \n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script.\n\n\"string\" is OSC message, and can have a prefix specifying type and count of values. \n\nAdditional parameters (after values) will be used as parameters to any format specifiers in \"string\". \n\nPrefixes are one or more characters of 'f' (float), 'i' (integer), 'b' (bool), 's' (string), which specify an OSC value of that type.");
   _fs.Add("oscmatch\t\"string\"[,format-output]\tMatches the current OSC event against \"string\" (see match()), and puts any matched specifiers (%s, %d, etc) into parameters specified (or fmt0..fmtX if not specified). \n\noscmatch() is the equivalent of match(\"string\",oscstr)");
   _fs.Add("oscparm\tparm_idx[,type,#string]\tGets the parameter value for the current OSC message. \n\nIf type is specified, it will be set to the type of the parameter ('f', 's', etc). \n\nIf #string is specified and type is 's', #string will be set to the OSC parameter string.");
@@ -1227,6 +1229,47 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_
         int n;
         for (n=0;n<_this->m_devs.GetSize();n++)
           _this->m_devs.Get(n)->midiSend(msg,3);
+      }
+      return 1.0;
+    }
+  }
+  return 0.0;
+}
+
+EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent_str(void *opaque, EEL_F *dest_device, EEL_F *strptr)
+{
+  scriptInstance *_this = (scriptInstance*)opaque;
+  if (_this)
+  {
+    int output_idx = (int) floor(*dest_device+0.5);
+    ioDevice *output = _this->m_devs.Get(output_idx - DEVICE_INDEX_BASE);
+    if (!output && output_idx>=0)
+    {
+      _this->DebugOutput("midisend_str(): device %f invalid",*dest_device);
+    }
+
+    WDL_FastString *fs=NULL;
+    const char *fmt = _this->GetStringForIndex(*strptr, &fs);
+    const int msglen = fs ? fs->GetLength() : fmt ? (int)strlen(fmt) : 0;
+    if (fmt && msglen > 0 && (output || output_idx == -1 || output_idx==-100))
+    {
+      const unsigned char *msg = (const unsigned char *)fmt;
+      if (g_input_omni_outs[0]) g_input_omni_outs[0]->onMessage(0,msg,msglen);
+
+      if (output)
+      {
+        output->midiSend(msg,msglen);
+      }
+      else if (output_idx==-100)
+      {
+        for (int n=0;n<g_devices.GetSize();n++)
+          g_devices.Get(n)->midiSend(msg,msglen);
+      }
+      else 
+      {
+        int n;
+        for (n=0;n<_this->m_devs.GetSize();n++)
+          _this->m_devs.Get(n)->midiSend(msg,msglen);
       }
       return 1.0;
     }
@@ -2224,6 +2267,7 @@ void initialize()
 
   NSEEL_init();
   NSEEL_addfunc_retval("midisend",1,NSEEL_PProc_THIS,&scriptInstance::_send_midievent);
+  NSEEL_addfunc_retval("midisend_str",2,NSEEL_PProc_THIS,&scriptInstance::_send_midievent_str);
   NSEEL_addfunc_varparm("oscsend",2,NSEEL_PProc_THIS,&scriptInstance::_send_oscevent);
   NSEEL_addfunc_varparm("oscmatch",1,NSEEL_PProc_THIS,&scriptInstance::_osc_match);
   NSEEL_addfunc_varparm("oscparm",1,NSEEL_PProc_THIS,&scriptInstance::_osc_parm);

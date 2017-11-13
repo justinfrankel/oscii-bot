@@ -368,16 +368,29 @@ void midiOutputDevice::run_output(WDL_FastString &textOut)
 
 void midiOutputDevice::midiSend(const unsigned char *buf, int len)
 {
-  if (m_handle && len>0 && len <= 3)
+  if (m_handle && len>0)
   {
-    unsigned char status = buf[0];
-    if (status == 0xF8 || status == 0xFA || status == 0xFB || status == 0xFC) len = 1;
-    else if (status == 0xF3 || status == 0xF1 || (status&0xF0) == 0xC0 || (status&0xF0) == 0xD0) len = 2;    
-    MIDIPacketList pktlist;
-    pktlist.numPackets = 1;
-    pktlist.packet[0].timeStamp = mach_absolute_time();
-    pktlist.packet[0].length = len;
-    memcpy(pktlist.packet[0].data, buf,len);
-    MIDISend(m_port, m_handle, &pktlist);
+    if (len <= 3)
+    {
+      unsigned char status = buf[0];
+      if (status == 0xF8 || status == 0xFA || status == 0xFB || status == 0xFC) len = 1;
+      else if (status == 0xF3 || status == 0xF1 || (status&0xF0) == 0xC0 || (status&0xF0) == 0xD0) len = 2;    
+      MIDIPacketList pktlist;
+      pktlist.numPackets = 1;
+      pktlist.packet[0].timeStamp = mach_absolute_time();
+      pktlist.packet[0].length = len;
+      memcpy(pktlist.packet[0].data, buf,len);
+      MIDISend(m_port, m_handle, &pktlist);
+    }
+    else
+    {
+      MIDIPacketList *pktlist=(MIDIPacketList *)malloc(sizeof(MIDIPacketList)+len);
+      pktlist->numPackets = 1;
+      pktlist->packet[0].timeStamp = mach_absolute_time();
+      pktlist->packet[0].length = len;
+      memcpy(pktlist->packet[0].data, buf, len);
+      MIDISend(m_port, m_handle, pktlist);
+      free(pktlist);
+    }
   }
 }

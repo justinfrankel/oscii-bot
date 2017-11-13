@@ -310,12 +310,43 @@ void midiOutputDevice::run_output(WDL_FastString &textOut)
 
 void midiOutputDevice::midiSend(const unsigned char *buf, int len)
 {
-  if (m_handle && len>0 && len <= 3)
+  if (m_handle && len>0)
   {
-    int a = buf[0];
-    if (len>=2) a|=(((int)buf[1])<<8);
-    if (len>=3) a|=(((int)buf[2])<<16);
-    if (midiOutShortMsg(m_handle,a) != MMSYSERR_NOERROR && !m_failed_time)
-      m_failed_time=GetTickCount();
+    if (len <= 3)
+    {
+      int a = buf[0];
+      if (len>=2) a|=(((int)buf[1])<<8);
+      if (len>=3) a|=(((int)buf[2])<<16);
+      if (midiOutShortMsg(m_handle,a) != MMSYSERR_NOERROR && !m_failed_time)
+        m_failed_time=GetTickCount();
+    }
+    else
+    {
+      MIDIHDR hdr = { (char *)buf, len, len };
+
+      if (midiOutPrepareHeader(m_handle,&hdr,sizeof(MIDIHDR))!=MMSYSERR_NOERROR) 
+      {
+        m_failed_time=GetTickCount();
+        return;
+      }
+
+      int timeout_cnt = 5000; // 5sec max
+      if (midiOutLongMsg(m_handle,&hdr,sizeof(MIDIHDR))==MMSYSERR_NOERROR)
+      {      
+        while (!(hdr.dwFlags&MHDR_DONE) && timeout_cnt-->0)
+        {
+          Sleep(1);
+        }
+      }
+      else
+      {
+        m_failed_time=GetTickCount();
+      }
+
+      while (midiOutUnprepareHeader(m_handle,&hdr,sizeof(MIDIHDR)) == MIDIERR_STILLPLAYING && timeout_cnt-->0)
+      {
+        Sleep(1);
+      }
+    }
   }
 }
