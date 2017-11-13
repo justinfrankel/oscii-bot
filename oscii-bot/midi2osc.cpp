@@ -1,8 +1,8 @@
 // OSCII-bot
-// Copyright (C) 2014 Cockos Incorporated
+// Copyright (C) 2014 and onward Cockos Incorporated
 // License: GPL
 
-#define OSCIIBOT_VERSION "0.4"
+#define OSCIIBOT_VERSION "0.5"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -420,17 +420,21 @@ void doc_Generate()
                 "<li>@input devicehandle OMNI-OSC<i> -- receives all OSC received by other scripts</i>\n"
                 "<li>@input devicehandle OMNI-MIDI-OUTPUT<i> -- receives all MIDI sent by other scripts</i>\n"
                 "<li>@input devicehandle OMNI-OSC-OUTPUT<i> -- receives all OSC sent by other scripts</i>\n"
-                "</ul>\n");
+                "</ul>\n"
+                "Note: in OSCII-bot v0.4+, you can send OSC messages to an OSC input device, which will send to the IP/port of the last message received.\n"
+                );
 
   fprintf(fp,"<li>@output : specifies a device to open for output. Usage:<ul>\n"
                 "<li>@output devicehandle OSC \"host:port\" [maxpacketsize (def=1024)] [sleepinMS (def=10)]\n"
                 "<li>@output devicehandle MIDI \"substring match\" [skip]\n"
-                "</ul>\n");
+                "</ul>\n"
+                "Note: in OSCII-bot v0.4+, you may also receive messages from an OSC output (if the other end replies).\n"
+                );
 
 
   fprintf(fp,"<li>@init : begins code that is executed on script load/recompile.\n");
   fprintf(fp,"<li>@timer : begins code that is executed periodically, usually around 100 times per second.\n");
-  fprintf(fp,"<li>@midimsg : begins code that is executed on receipt of a MIDI message. In this case, msg1/msg2/msg3 will be set to the parameters of the MIDI message, and msgdev will receive the MIDI device index. In the case of sysex, msg1/msg2/msg3 will all be 0, and oscstr will be set to a string with the SysEx data.\n");
+  fprintf(fp,"<li>@midimsg : begins code that is executed on receipt of a MIDI message. In this case, msg1/msg2/msg3 will be set to the parameters of the MIDI message, and msgdev will receive the MIDI device index. In OSCII-bot v0.5+, if a SysEx message is received, msg1/msg2/msg3 will all be 0, and oscstr will be set to a string with the SysEx data.\n");
   fprintf(fp,"<li>@oscmsg : begins code that is executed on receipt of an OSC message. In this case, msgdev will specify the device, oscstr will be set to a string that specifies the OSC message, and see oscparm() to query the values of the OSC parameters. To quickly match the OSC message against various strings, see match() or see oscmatch().\n");
   fprintf(fp,"<li>@import : import functions from other reascripts using <code>@import filename.txt</code> -- note that only the file's functions will be imported, normal code in that file will not be executed.\n");
   fprintf(fp,"</ul>");
@@ -439,7 +443,7 @@ void doc_Generate()
   fprintf(fp,"Special variables:<ul>\n"
       "<li>msg1/msg2/msg3: used to specify MIDI message values received by @midimsg or sent (see midisend())\n"
       "<li>msgdev: specifies the device on receipt of a MIDI or OSC message in @midimsg or @oscmsg\n"
-      "<li>oscstr: specifies a string of a received OSC message in @oscmsg\n"
+      "<li>oscstr: specifies a string of a received OSC message in @oscmsg, or (OSCII-bot v0.5+) of a SysEx message in @midimsg. Will be set to -1 if not valid.\n"
       "<li>fmt0..fmt31: specifies (deprecated) format values for various functions including sprintf(), match(), oscmatch(), etc. \n"
       "<li>time: set to a timestamp in seconds with at least millisecond granularity\n"
       "</ul>\n\n");
@@ -603,7 +607,7 @@ void doc_Generate()
   while (*p) { fs->Add(p); p += strlen(p) + 1; }
 
   _fs.Add("midisend\tdevice_index\tSends a MIDI event (specified by variables msg1,msg2,msg3) to the device specified by device_index.\n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script. ");
-  _fs.Add("midisend_str\tdevice_index,\"string\"\tSends a MIDI event (specified by the contents of a string) to the device specified by device_index.\n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script. Can be used to send sysex.");
+  _fs.Add("midisend_str\tdevice_index,\"string\"\t(v0.5+) Sends a MIDI event (specified by the contents of a string) to the device specified by device_index.\n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script. Can be used to send SysEx.");
   _fs.Add("oscsend\tdevice_index,\"string\"[,value,...]\tSends an OSC event (specified by \"string\" and one or more parameters specifying values) to device specified by device_index. \n\ndevice_index can be -100 to send to all outputs opened by application, -1 to send to all outputs opened by script.\n\n\"string\" is OSC message, and can have a prefix specifying type and count of values. \n\nAdditional parameters (after values) will be used as parameters to any format specifiers in \"string\". \n\nPrefixes are one or more characters of 'f' (float), 'i' (integer), 'b' (bool), 's' (string), which specify an OSC value of that type.");
   _fs.Add("oscmatch\t\"string\"[,format-output]\tMatches the current OSC event against \"string\" (see match()), and puts any matched specifiers (%s, %d, etc) into parameters specified (or fmt0..fmtX if not specified). \n\noscmatch() is the equivalent of match(\"string\",oscstr)");
   _fs.Add("oscparm\tparm_idx[,type,#string]\tGets the parameter value for the current OSC message. \n\nIf type is specified, it will be set to the type of the parameter ('f', 's', etc). \n\nIf #string is specified and type is 's', #string will be set to the OSC parameter string.");
@@ -2319,7 +2323,11 @@ void OnCommandLineParameter(const char *parm, int &state)
     case 0:
       if (parm[0] == '-')
       {
-        if (!strcmp(parm,"-dir"))
+        if (!strcmp(parm,"-doc"))
+        {
+          doc_Generate();
+        }
+        else if (!strcmp(parm,"-dir"))
         {
           state=1;
         }
