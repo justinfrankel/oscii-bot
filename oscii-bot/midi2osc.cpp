@@ -261,7 +261,7 @@ class scriptInstance
       va_end(arglist);
     }
 
-    const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL);
+    const char *GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs=NULL, bool is_for_write=false);
     EEL_F *GetVarForFormat(int formatidx);
 
     bool GetImageFilename(EEL_F val, WDL_FastString *fsWithDir, int isWrite)
@@ -311,6 +311,7 @@ class scriptInstance
 #define EEL_STRING_GETFMTVAR(x) ((scriptInstance*)(opaque))->GetVarForFormat(x)
 // override defaults for OSC index of 8000
 #define EEL_STRING_GET_FOR_INDEX(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr)
+#define EEL_STRING_GET_FOR_WRITE(x, wr) ((scriptInstance*)(opaque))->GetStringForIndex(x, wr,true)
 
 // debug/stdout write
 #define EEL_STRING_DEBUGOUT ((scriptInstance*)(opaque))->DebugOutput // no parameters, since it takes varargs
@@ -770,7 +771,7 @@ void scriptInstance::start(WDL_FastString &results)
   }
 }
 
-const char *scriptInstance::GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs)
+const char *scriptInstance::GetStringForIndex(EEL_F val, WDL_FastString **isWriteableAs, bool is_for_write)
 {
   const int idx = (int) (val+0.5);
   if (idx == OSC_CURMSG_STRING)
@@ -784,7 +785,7 @@ const char *scriptInstance::GetStringForIndex(EEL_F val, WDL_FastString **isWrit
     return m_cur_midi_sysex_msg.Get();
   }
 
-  return m_eel_string_state->GetStringForIndex(val,isWriteableAs);
+  return m_eel_string_state->GetStringForIndex(val,isWriteableAs,is_for_write);
 }
 
 EEL_F *scriptInstance::GetVarForFormat(int formatidx)
@@ -1155,7 +1156,7 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_parm(void *opaque, INT_PTR np, EEL_F 
     if (np > 2)
     {
       WDL_FastString *wr=NULL;
-      _this->GetStringForIndex(parms[2][0],&wr);
+      _this->GetStringForIndex(parms[2][0],&wr,true);
       if (wr)
       {
         if (c=='s') 
