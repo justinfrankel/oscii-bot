@@ -276,7 +276,7 @@ void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
         }
 
         m_last_dev_idx = x;
-        if (midiOutOpen(&m_handle,x,(LPARAM)callbackFunc,(LPARAM)this,CALLBACK_FUNCTION) != MMSYSERR_NOERROR )
+        if (midiOutOpen(&m_handle,x,NULL,0,0) != MMSYSERR_NOERROR )
         {
           m_handle=0;
         }

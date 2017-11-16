@@ -97,13 +97,6 @@ public:
 #ifdef _WIN32
   DWORD m_failed_time;
   HMIDIOUT m_handle;
-  static void CALLBACK callbackFunc(
-    HMIDIOUT hMidiIn,  
-    UINT wMsg,        
-    LPARAM dwInstance, 
-    LPARAM dwParam1,   
-    LPARAM dwParam2    
-    ) { }
 #endif
 
 #ifdef __APPLE__
