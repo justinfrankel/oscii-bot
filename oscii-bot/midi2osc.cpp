@@ -790,7 +790,7 @@ const char *scriptInstance::GetStringForIndex(EEL_F val, WDL_FastString **isWrit
   }
   else if (idx==MIDI_CURMSG_STRING && m_cur_midi_sysex_msg.GetLength())
   {
-    if (isWriteableAs) *isWriteableAs=&m_cur_midi_sysex_msg;
+    if (isWriteableAs && !is_for_write) *isWriteableAs=&m_cur_midi_sysex_msg;
     return m_cur_midi_sysex_msg.Get();
   }
 
