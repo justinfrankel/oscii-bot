@@ -9,12 +9,15 @@
 #include "../WDL/wdlstring.h"
 #include "../WDL/ptrlist.h"
 
+extern double get_time_precise(); // ioDevice implementations will set m_last_open_time to this on open/re-open
+
 class ioDevice {
   protected:
     ioDevice() 
     {
       m_has_input = false;
       m_has_output = false;
+      m_last_open_time = 0.0;
     }
     struct rec
     {
@@ -26,6 +29,7 @@ class ioDevice {
 
   public:
 
+    double m_last_open_time;
     bool m_has_input, m_has_output;
 
     virtual ~ioDevice() { };

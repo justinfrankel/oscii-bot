@@ -72,6 +72,7 @@ void midiInputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
         }
         else
         {
+          m_last_open_time=get_time_precise();
           int x;
           for (x = 0; x < 8; x ++)
           {
@@ -276,6 +277,7 @@ void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
         }
 
         m_last_dev_idx = x;
+        m_last_open_time=get_time_precise();
         if (midiOutOpen(&m_handle,x,NULL,0,0) != MMSYSERR_NOERROR )
         {
           m_handle=0;

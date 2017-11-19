@@ -300,6 +300,7 @@ class scriptInstance
     static EEL_F NSEEL_CGEN_CALL _send_oscevent(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _send_midievent_str(void *opaque, EEL_F *dest_device, EEL_F *strptr);
     static EEL_F NSEEL_CGEN_CALL _send_midievent(void *opaque, EEL_F *dest_device);
+    static EEL_F NSEEL_CGEN_CALL _get_device_open_time(void *opaque, EEL_F *dest_device);
     static EEL_F NSEEL_CGEN_CALL _osc_parm(void *opaque, INT_PTR np, EEL_F **parms);
     static EEL_F NSEEL_CGEN_CALL _osc_match(void *opaque, INT_PTR np, EEL_F **parms);
 };
@@ -343,6 +344,13 @@ class scriptInstance
 #define EEL_EVAL_GET_VMCTX(opaque) (((scriptInstance *)opaque)->m_vm)
 
 #include "../WDL/eel2/eel_eval.h"
+
+double get_time_precise()
+{
+  EEL_F v=0.0;
+  _eel_time_precise(NULL,&v);
+  return v;
+}
 
 static bool IsFuncChar(char c)
 {
@@ -613,8 +621,9 @@ void doc_Generate()
   _fs.Add("oscmatch\t\"string\"[,format-output]\tMatches the current OSC event against \"string\" (see match()), and puts any matched specifiers (%s, %d, etc) into parameters specified (or fmt0..fmtX if not specified). \n\noscmatch() is the equivalent of match(\"string\",oscstr)");
   _fs.Add("oscparm\tparm_idx[,type,#string]\tGets the parameter value for the current OSC message. \n\nIf type is specified, it will be set to the type of the parameter ('f', 's', etc). \n\nIf #string is specified and type is 's', #string will be set to the OSC parameter string.");
 
+  _fs.Add("get_device_open_time\tdevice_index\tReturns the timestamp (similar to time_precise()) of the last time this device was opened/re-opened, can be used to detect device reconnection.");
 
-    fprintf(fp, "<BR><BR><hr><br><h2>Function List</h2>\n");
+  fprintf(fp, "<BR><BR><hr><br><h2>Function List</h2>\n");
 
   p = eel_strings_function_reference;
   while (*p) { fs->Add(p); p += strlen(p) + 1; }
@@ -1205,6 +1214,17 @@ EEL_F NSEEL_CGEN_CALL scriptInstance::_osc_match(void *opaque, INT_PTR np, EEL_F
   return 0.0;
 }
 
+EEL_F NSEEL_CGEN_CALL scriptInstance::_get_device_open_time(void *opaque, EEL_F *device)
+{
+  scriptInstance *_this = (scriptInstance*)opaque;
+  if (_this)
+  {
+    int output_idx = (int) floor(*device+0.5);
+    ioDevice *output = _this->m_devs.Get(output_idx - DEVICE_INDEX_BASE);
+    if (output) return output->m_last_open_time;
+  }
+  return 0.0;
+}
 
 EEL_F NSEEL_CGEN_CALL scriptInstance::_send_midievent(void *opaque, EEL_F *dest_device)
 {
@@ -2291,6 +2311,7 @@ void initialize()
   JNL::open_socketlib();
 
   NSEEL_init();
+  NSEEL_addfunc_retval("get_device_open_time",1,NSEEL_PProc_THIS,&scriptInstance::_get_device_open_time);
   NSEEL_addfunc_retval("midisend",1,NSEEL_PProc_THIS,&scriptInstance::_send_midievent);
   NSEEL_addfunc_retval("midisend_str",2,NSEEL_PProc_THIS,&scriptInstance::_send_midievent_str);
   NSEEL_addfunc_varparm("oscsend",2,NSEEL_PProc_THIS,&scriptInstance::_send_oscevent);

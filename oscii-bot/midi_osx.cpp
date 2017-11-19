@@ -180,6 +180,7 @@ void midiInputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
         }
 
         m_last_dev_idx = x;
+        m_last_open_time=get_time_precise();
 
         if (g_client)
         {
@@ -316,6 +317,7 @@ void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
           }
         }
 
+        m_last_open_time=get_time_precise();
         m_last_dev_idx = x;
         if (g_client)
         {
