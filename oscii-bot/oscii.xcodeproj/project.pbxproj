@@ -419,6 +419,7 @@
 			isa = PBXNativeTarget;
 			buildConfigurationList = 33AA3143185A7E8D001D767E /* Build configuration list for PBXNativeTarget "OSCII-bot" */;
 			buildPhases = (
+				3304E16F1FC2253B00290319 /* ShellScript */,
 				33AA310E185A7E8D001D767E /* Sources */,
 				33AA310F185A7E8D001D767E /* Frameworks */,
 				33AA3110185A7E8D001D767E /* Resources */,
@@ -504,6 +505,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		3304E16F1FC2253B00290319 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "/usr/bin/php ../WDL/swell/mac_resgen.php res.rc";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		33AA310E185A7E8D001D767E /* Sources */ = {
