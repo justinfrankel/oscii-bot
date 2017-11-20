@@ -1783,6 +1783,7 @@ void scriptInstance::load_script(WDL_FastString &results)
             p+=2;
             break;
           }
+          p++;
         }
       }
       if (parsestate==-1 && p[0])
