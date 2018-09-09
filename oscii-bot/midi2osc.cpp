@@ -2552,7 +2552,13 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
           if (p && *p)
           {
             g_default_script_path.Set(p);
-            g_default_script_path.Append("/Library/Application Support/OSCII-bot");
+            g_default_script_path.Append(
+#ifdef __APPLE__
+                "/Library/Application Support/OSCII-bot"
+#else
+                "/.config/OSCII-bot"
+#endif
+                );
             mkdir(g_default_script_path.Get(),0777);
             g_ini_file.Set(g_default_script_path.Get());
             g_ini_file.Append("/oscii-bot.ini");
@@ -2576,7 +2582,13 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
             printf(
             "Usage:\n"
             "%s [scriptfilename.txt ...] [-dir scriptwithtxtfiles]\n\n"
-            "If no script files specified, default will be all txt files in ~/Library/Application Support/OSCII-bot",g_argv[0]);
+            "If no script files specified, default will be all txt files in"
+#ifdef __APPLE__
+                "~/Library/Application Support/OSCII-bot"
+#else
+                "~/.config/OSCII-bot"
+#endif
+                ,g_argv[0]);
           }
         }
         initialize();
