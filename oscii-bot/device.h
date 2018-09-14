@@ -103,8 +103,8 @@ public:
   HMIDIOUT m_handle;
 #endif
 
-#ifdef __APPLE__
-#ifndef NO_DEFINE_APPLE_MIDI_REFS
+#ifndef _WIN32
+#if defined(NO_DEFINE_APPLE_MIDI_REFS) || !defined(__APPLE__)
   typedef int MIDIEndpointRef;
   typedef int MIDIPortRef;
   struct MIDIPacketList;
@@ -147,8 +147,8 @@ public:
   DWORD m_lastmsgtime;
 #endif
 
-#ifdef __APPLE__
-#ifndef NO_DEFINE_APPLE_MIDI_REFS
+#ifndef _WIN32
+#if defined(NO_DEFINE_APPLE_MIDI_REFS) || !defined(__APPLE__)
   typedef int MIDIEndpointRef; // these are UInt32
   typedef int MIDIPortRef;
   struct MIDIPacketList;

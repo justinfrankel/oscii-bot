@@ -2141,7 +2141,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         g_last_wndpos.bottom += g_last_wndpos.top;
         SetWindowPos(hwndDlg,NULL,g_last_wndpos.left,g_last_wndpos.top,g_last_wndpos.right-g_last_wndpos.left,g_last_wndpos.bottom-g_last_wndpos.top,SWP_NOZORDER|SWP_NOACTIVATE);
       }
-#ifdef __APPLE__
+#ifndef _WIN32
       ShowWindow(GetDlgItem(hwndDlg,IDCANCEL),SW_HIDE);
       {
         WDL_WndSizer__rec *r1=resize.get_item(IDCANCEL);
@@ -2181,7 +2181,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         WritePrivateProfileString("oscii-bot","wnd_h", tmp, g_ini_file.Get());
       }
       g_hwnd=NULL;
-#ifndef _WIN32
+#ifdef __APPLE__
       SWELL_PostQuitMessage(0);
 #endif
     break;
