@@ -2796,7 +2796,7 @@ static int compileNativeFunctionCall(compileContext *ctx, opcodeRec *op, unsigne
   #ifdef GLUE_HAS_FXCH
     int need_fxch=0;
   #endif
-    int last_nt_parm=-1, last_nt_parm_type;
+    int last_nt_parm=-1, last_nt_parm_type=-1;
     
     if (op->opcodeType == OPCODETYPE_FUNCX)
     {
