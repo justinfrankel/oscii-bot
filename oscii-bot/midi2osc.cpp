@@ -1585,7 +1585,6 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (addr.sin_addr.s_addr == INADDR_NONE) addr.sin_addr.s_addr = INADDR_ANY;
               addr.sin_port=htons(port);
 
-              int x;
               bool is_reuse=false;
               oscDevice *r=NULL;
               for (x=0; x < g_devices.GetSize(); x++)
@@ -1722,7 +1721,6 @@ void scriptInstance::load_script(WDL_FastString &results)
             {
               const char *dp = lp.gettoken_str(3);
               oscDevice *r = NULL;
-              int x;
               bool is_reuse=false;
               for (x=0;x<g_devices.GetSize();x++)
               {
@@ -2254,7 +2252,6 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
           static WDL_FastString s;
           s.Set("");
-          int x;
           for(x=0;x<sizeof(g_recent_events)/sizeof(g_recent_events[0]);x++)
           {
             int a = g_recent_events[x];
@@ -2612,16 +2609,16 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
     case SWELLAPP_PROCESSMESSAGE:
       if (parm1)
       {
-        MSG *msg = (MSG *)parm1;
-        if (msg->hwnd && (msg->message == WM_KEYDOWN || msg->message == WM_KEYUP || msg->message == WM_CHAR))
+        MSG *m = (MSG *)parm1;
+        if (m->hwnd && (m->message == WM_KEYDOWN || m->message == WM_KEYUP || m->message == WM_CHAR))
         {
           int x;
           for(x=0;x<g_scripts.GetSize();x++)
           {
             scriptInstance *scr = g_scripts.Get(x);
-            if (scr->m_lice_state && scr->m_lice_state->hwnd_standalone == msg->hwnd)
+            if (scr->m_lice_state && scr->m_lice_state->hwnd_standalone == m->hwnd)
             {
-              SendMessage(msg->hwnd,msg->message,msg->wParam,msg->lParam);
+              SendMessage(m->hwnd,m->message,m->wParam,m->lParam);
               return 1;
             }
           }
