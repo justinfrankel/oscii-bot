@@ -63,6 +63,10 @@ LFLAGS += $(shell pkg-config --libs gdk-3.0)
 CFLAGS += -DSWELL_FREETYPE $(shell freetype-config --cflags)
 LFLAGS += $(shell freetype-config --libs)
 
+##### Jack
+CFLAGS += $(shell pkg-config --cflags jack)
+LFLAGS += $(shell pkg-config --libs jack)
+
 CXXFLAGS = $(CFLAGS)
 
 

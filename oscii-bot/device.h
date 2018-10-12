@@ -104,13 +104,24 @@ public:
 #endif
 
 #ifndef _WIN32
-#if defined(NO_DEFINE_APPLE_MIDI_REFS) || !defined(__APPLE__)
+#ifdef __APPLE__
+#ifndef NO_DEFINE_APPLE_MIDI_REFS
   typedef int MIDIEndpointRef;
   typedef int MIDIPortRef;
   struct MIDIPacketList;
 #endif
   MIDIEndpointRef m_handle; 
   MIDIPortRef m_port;
+#else
+#ifndef NO_DEFINE_LINUX_MIDI_REFS
+  struct jack_port_t;
+  struct jack_ringbuffer_t;
+#endif
+  jack_port_t *m_port;
+  jack_port_t *m_handle;
+  jack_ringbuffer_t *m_ring;
+  time_t m_lastmsgtime;
+#endif
   time_t m_failed_time;
 #endif
 
@@ -148,18 +159,28 @@ public:
 #endif
 
 #ifndef _WIN32
-#if defined(NO_DEFINE_APPLE_MIDI_REFS) || !defined(__APPLE__)
+#ifdef __APPLE__
+#ifndef NO_DEFINE_APPLE_MIDI_REFS
   typedef int MIDIEndpointRef; // these are UInt32
   typedef int MIDIPortRef;
   struct MIDIPacketList;
 #endif
   MIDIEndpointRef m_handle; 
   MIDIPortRef m_port;
+  static void MyReadProc(const MIDIPacketList *pktlist, void *refCon, void *connRefCon);
+#else
+#ifndef NO_DEFINE_LINUX_MIDI_REFS
+  struct jack_port_t;
+  typedef int jack_nframes_t; // UInt32
+#endif
+  jack_port_t *m_port;
+  jack_port_t *m_handle;
+  time_t m_failed_time;
+#endif
   time_t m_lastmsgtime;
   bool m_running;
   int m_curstatus;
   void ProcessPacket(unsigned char *data, int length, int* laststatus);
-  static void MyReadProc(const MIDIPacketList *pktlist, void *refCon, void *connRefCon);
 #endif
 
   char *m_name_substr,*m_name_used;
