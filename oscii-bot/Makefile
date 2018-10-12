@@ -41,7 +41,7 @@ OTHER_OBJS = wndsize.o filebrowse.o
 
 RESFILES = res.rc_mac_dlg res.rc_mac_menu
 
-OBJS += $(SWELL_OBJS) $(PNG_OBJS) $(ZLIB_OBJS) $(JNET_OBJS) $(EEL_OBJS) $(LICE_OBJS) $(OTHER_OBJS) oscmsg.o midi_linux.o midi2osc.o
+OBJS += $(SWELL_OBJS) $(PNG_OBJS) $(ZLIB_OBJS) $(JNET_OBJS) $(EEL_OBJS) $(LICE_OBJS) $(OTHER_OBJS) oscmsg.o midi_linux.o midi2osc.o main.o
 
 
 

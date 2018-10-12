@@ -2520,12 +2520,16 @@ BOOL systray_del(HWND hwnd, UINT uID) {
 
 
 #ifndef _WIN32
+#ifdef __APPLE__
 extern "C" {
+#endif
 
 char **g_argv;
 int g_argc;
 
+#ifdef __APPLE__
 };
+#endif
 
 INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 {
