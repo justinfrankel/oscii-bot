@@ -739,7 +739,7 @@ void scriptInstance::clear()
     if (m_handles[x]) fclose(m_handles[x]); 
     m_handles[x]=0;
   }
-  for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
+  for (x=0;x<(int)(sizeof(m_code)/sizeof(m_code[0])); x++)
   {
     if (m_code[x]) NSEEL_code_free(m_code[x]);
     m_code[x]=0;
@@ -941,14 +941,14 @@ public:
 
     SET_SOCK_BLOCK(m_sendsock, true);
 
-    while (m_sendq.Available() >= sizeof(int))
+    while (m_sendq.Available() >= (int)sizeof(int))
     {
       int len=*(int*)m_sendq.Get(); // not advancing
       OSC_MAKEINTMEM4BE((char*)&len);
 
       if (len < 1 || len > MAX_OSC_MSG_LEN || len > m_sendq.Available()) break;             
         
-      if (packetlen > 16 && packetlen+sizeof(int)+len > m_maxpacketsz)
+      if (packetlen > 16 && packetlen+(int)sizeof(int)+len > m_maxpacketsz)
       {
         // packet is full
         if (!hasbundle)
@@ -1019,7 +1019,7 @@ public:
 
 void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs)
 {
-  if (parsestate<0 || parsestate >= sizeof(m_code)/sizeof(m_code[0])) return;
+  if (parsestate<0 || (unsigned int)parsestate >= sizeof(m_code)/sizeof(m_code[0])) return;
 
   if (m_code[parsestate])
   {
@@ -1498,9 +1498,9 @@ void scriptInstance::load_script(WDL_FastString &results)
     {
       const char *tok=lp.gettoken_str(0);
       int x;
-      for (x=0;x<sizeof(g_code_names)/sizeof(g_code_names[0]) && strcmp(tok,g_code_names[x]);x++);
+      for (x=0;x<(int)(sizeof(g_code_names)/sizeof(g_code_names[0])) && strcmp(tok,g_code_names[x]);x++);
 
-      if (x < sizeof(g_code_names)/sizeof(g_code_names[0]))
+      if (x < (int)(sizeof(g_code_names)/sizeof(g_code_names[0])))
       {
         compileCode(parsestate,curblock,results,cursec_lineoffs);
         parsestate=x;
@@ -1878,7 +1878,7 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
 
     int pos=0;
     const int endpos = tmp.GetSize();
-    while (pos < endpos+1 - sizeof(incomingEvent))
+    while (pos < endpos+1 - (int)sizeof(incomingEvent))
     {
       incomingEvent *evt = (incomingEvent*) ((char *)tmp.Get()+pos);
       
@@ -2252,7 +2252,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
           static WDL_FastString s;
           s.Set("");
-          for(x=0;x<sizeof(g_recent_events)/sizeof(g_recent_events[0]);x++)
+          for(x=0;x<(int)(sizeof(g_recent_events)/sizeof(g_recent_events[0]));x++)
           {
             int a = g_recent_events[x];
             if (!a) break;

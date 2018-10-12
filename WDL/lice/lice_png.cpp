@@ -188,7 +188,7 @@ LICE_IBitmap *LICE_LoadPNGFromNamedResource(const char *name, LICE_IBitmap *bmp)
   sprintf(tmp,"/proc/%d/exe",getpid());
   int sz = readlink(tmp, buf, sizeof(buf)-512);  
   if (sz<0) sz=0;
-  else if (sz >= sizeof(buf)-512) sz = sizeof(buf)-512-1;
+  else if ((unsigned int)sz >= sizeof(buf)-512) sz = sizeof(buf)-512-1;
   buf[sz]=0;
   char *p = buf;
   while (*p) p++;
