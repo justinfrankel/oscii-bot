@@ -34,11 +34,15 @@ OTHER_OBJS = wndsize.o filebrowse.o
 RESFILES = res.rc_mac_dlg res.rc_mac_menu
 
 OBJS += oscmsg.o midi_linux.o midi2osc.o main.o $(SWELL_OBJS) $(PNG_OBJS) \
-        $(ZLIB_OBJS) $(JNET_OBJS) $(EEL_OBJS) $(LICE_OBJS) $(OTHER_OBJS) 
+        $(ZLIB_OBJS) $(JNET_OBJS) $(EEL_OBJS) $(OTHER_OBJS) 
+
 
 ###### Compiler/Linker flags
 CFLAGS += -pipe -fvisibility=hidden -fno-math-errno -fPIC -DPIC -Wall -Wshadow \
           -Wno-unused-function -Wno-multichar -Wno-unused-result
+          
+ARCH := $(shell uname -m)
+PKG_CONFIG = pkg-config
 
 ifndef ALLOW_WARNINGS
   CFLAGS += -Werror
@@ -47,25 +51,52 @@ ifndef DEPRECATED_WARNINGS
   CFLAGS +=  -Wno-deprecated-declarations
 endif
 
+ifneq ($(filter arm%,$(ARCH)),)
+  CFLAGS += -fsigned-char -marm
+endif
+
 ifdef DEBUG
   CFLAGS += -O0 -g -D_DEBUG
 else
   CFLAGS += -O2 -DNDEBUG
 endif
-CFLAGS += -DSWELL_LICE_GDI -DPNG_WRITE_SUPPORTED
-LFLAGS = -lpthread -ldl -lX11 -lXi -lXfixes
 
-###### GDK
-CFLAGS += -DSWELL_TARGET_GDK=3 $(shell pkg-config --cflags gdk-3.0)
-LFLAGS += $(shell pkg-config --libs gdk-3.0)
+LINKEXTRA =  -lpthread -ldl 
 
-###### Freetype
-CFLAGS += -DSWELL_FREETYPE $(shell freetype-config --cflags)
-LFLAGS += $(shell freetype-config --libs)
+ifndef NOGDK
+  ifdef GDK2
+    CFLAGS += -DSWELL_TARGET_GDK=2 $(shell $(PKG_CONFIG) --cflags gdk-2.0)
+    LINKEXTRA += $(shell $(PKG_CONFIG) --libs gdk-2.0)
+    LINKEXTRA += -lX11 -lXi
+  else
+    ifdef SWELL_SUPPORT_GTK
+      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gtk+-3.0) -DSWELL_SUPPORT_GTK
+    else
+      CFLAGS += -DSWELL_TARGET_GDK=3 $(shell $(PKG_CONFIG) --cflags gdk-3.0)
+    endif
+    LINKEXTRA += -lX11 -lXi
+    ifdef SWELL_SUPPORT_GTK
+      LINKEXTRA += $(shell $(PKG_CONFIG) --libs gtk+-3.0)
+    else
+      LINKEXTRA += $(shell $(PKG_CONFIG) --libs gdk-3.0)
+    endif
+  endif
+  CFLAGS += -DSWELL_LICE_GDI
+  OBJS += $(LICE_OBJS)
+
+  ifndef NOFREETYPE
+    CFLAGS += -DSWELL_FREETYPE $(shell $(PKG_CONFIG) --cflags freetype2)
+    LINKEXTRA += $(shell $(PKG_CONFIG) --libs freetype2)
+    ifndef NOFONTCONFIG
+      CFLAGS += -DSWELL_FONTCONFIG
+      LINKEXTRA += -lfontconfig
+    endif
+  endif
+endif
 
 ##### Jack
-CFLAGS += $(shell pkg-config --cflags jack)
-LFLAGS += $(shell pkg-config --libs jack)
+CFLAGS += $(shell $(PKG_CONFIG) --cflags jack)
+LINKEXTRA += $(shell $(PKG_CONFIG) --libs jack)
 
 CXXFLAGS = $(CFLAGS)
 
@@ -81,7 +112,7 @@ asm-nseel-x64.o: a2x64.php asm-nseel-x86-gcc.c
 	cd $(WDL_PATH)/eel2 && php a2x64.php elf64 && cp $@ ../../oscii-bot
 	
 $(APPNAME): $(RESFILES) $(OBJS)
-	$(CXX) -o $@ $(CFLAGS) $(OBJS) $(LFLAGS)
+	$(CXX) -o $@ $(CFLAGS) $(OBJS) $(LINKEXTRA)
 
 run: $(APPNAME)
 	./$^

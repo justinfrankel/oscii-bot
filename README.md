@@ -15,7 +15,7 @@ Navigate into /oscii-bot/ and type ```make``` or ```make DEBUG=1```
 * if you want to use ALSA MIDI devices and have Jack2 installed: [a2jmidid](http://manual.ardour.org/setting-up-your-system/setting-up-midi/midi-on-linux/)
 * gcc
 * make
-* GTK/GDK 3.0 development packages
+* GTK/GDK 2.0 or 3.0 development packages
 * php (php-cli should be sufficient)
 
 ## Where to get help
