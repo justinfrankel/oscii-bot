@@ -330,27 +330,13 @@ void midiInputDevice::run_input(WDL_FastString &textOut)
     if (now > m_lastmsgtime+1) // every 1s of activity check if port exists
     {
       m_lastmsgtime = now;
-      const char ** ports=jack_get_ports(g_client,NULL,JACK_DEFAULT_MIDI_TYPE,JackPortIsOutput);
-      if (ports)
+      if (!jack_port_by_name(g_client,m_name_used))
       {
-        bool port_exists=false;
-        for(unsigned int x=0;ports[x];x++)
-        {
-          if (m_name_used && !strcmp(m_name_used,ports[x]))
-          {
-            port_exists=true;
-            break;
-          }
-        }
-        if (!port_exists)
-        {
-          textOut.AppendFormatted(1024,"***** Lost MIDI input device %s\r\n",m_name_used);
-          do_close();
-        }
+        textOut.AppendFormatted(1024,"***** Lost MIDI input device %s\r\n",m_name_used);
+        do_close();
       }
-      jack_free(ports);
     }
-    if (m_port && !jack_port_connected_to(m_port,m_name_used))
+    if (m_port && jack_port_by_name(g_client,m_name_used) && !jack_port_connected_to(m_port,m_name_used))
     {
       jack_connect(g_client, jack_port_name(m_handle), jack_port_name(m_port));
     }
@@ -487,27 +473,13 @@ void midiOutputDevice::run_output(WDL_FastString &textOut)
     if (now > m_lastmsgtime+1) // every 1s of activity check if port exists
     {
       m_lastmsgtime = now;
-      const char ** ports=jack_get_ports(g_client,NULL,JACK_DEFAULT_MIDI_TYPE,JackPortIsInput);
-      if (ports)
+      if (!jack_port_by_name(g_client,m_name_used))
       {
-        bool port_exists=false;
-        for(unsigned int x=0;ports[x];x++)
-        {
-          if (m_name_used && !strcmp(m_name_used,ports[x]))
-          {
-            port_exists=true;
-            break;
-          }
-        }
-        if (!port_exists)
-        {
-          textOut.AppendFormatted(1024,"***** Lost MIDI output device %s\r\n",m_name_used);
-          do_close();
-        }
+        textOut.AppendFormatted(1024,"***** Lost MIDI output device %s\r\n",m_name_used);
+        do_close();
       }
-      jack_free(ports);
     }
-    if (m_port && !jack_port_connected_to(m_port,m_name_used))
+    if (m_port && jack_port_by_name(g_client,m_name_used) && !jack_port_connected_to(m_port,m_name_used))
     {
       jack_connect(g_client, jack_port_name(m_port), jack_port_name(m_handle));
     }
