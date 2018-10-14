@@ -11,7 +11,7 @@ Navigate into /oscii-bot/ and type ```make``` or ```make DEBUG=1```
 
 ## Prerequisites
 
-* Jack2 & Jack2 development packages `libjack-jackd2-dev` (Jack1 may work too but has issues auto-connecting ports here)
+* Jack + Jack development packages (i.e. `libjack-dev` for Jack1 or `libjack-jackd2-dev` for Jack2)
 * if you want to use ALSA MIDI devices and have Jack2 installed: [a2jmidid](http://manual.ardour.org/setting-up-your-system/setting-up-midi/midi-on-linux/)
 * gcc
 * make

@@ -14,54 +14,6 @@
 static jack_client_t *g_client;
 extern WDL_PtrList<ioDevice> g_devices;
 
-static const char ** getConnections(WDL_PtrList<const char> &myPortsL, WDL_PtrList<const char*> &connPortsL) 
-{
-  const char **allPorts=jack_get_ports(g_client,NULL,JACK_DEFAULT_MIDI_TYPE,0);
-  if (allPorts) 
-  {
-    jack_port_t *curPort;
-    for(unsigned int j=0;allPorts[j];j++)
-    { 
-      curPort=jack_port_by_name(g_client,allPorts[j]);
-      if (curPort && jack_port_is_mine(g_client,curPort))
-      {
-        myPortsL.Add(allPorts[j]);
-        const char** connPorts=jack_port_get_connections(curPort);
-        if (connPorts) connPortsL.Add(connPorts);
-      }
-    }
-  }
-  return allPorts;
-}
-
-static void setConnections(WDL_PtrList<const char> &myPortsL, WDL_PtrList<const char*> &connPortsL)
-{
-  for (int k=0; k<myPortsL.GetSize() && k<connPortsL.GetSize(); k++)
-  {
-    const char** connPorts = connPortsL.Get(k);
-    if (myPortsL.Get(k) && connPorts && connPorts[0])
-    {
-      jack_port_t* curPort=jack_port_by_name(g_client,myPortsL.Get(k));
-      if (curPort) {
-        if (jack_port_flags(curPort)&JackPortIsInput) 
-        {
-          jack_connect(g_client, connPorts[0], myPortsL.Get(k)); // only restore first connection
-        }
-        else if (jack_port_flags(curPort)&JackPortIsOutput)
-        {
-          jack_connect(g_client, myPortsL.Get(k), connPorts[0]);
-        }
-      }
-    }
-  }
-}
-
-static void freeJackArrays(const char** &allPorts, WDL_PtrList<const char*> &connPortsL)
-{
-  jack_free(allPorts);
-  for (int k=0; k<connPortsL.GetSize(); k++) jack_free(connPortsL.Get(k));
-}
-
 static int process(jack_nframes_t nframes, void *refCon)
 {
   WDL_PtrList<ioDevice> *devices=(WDL_PtrList<ioDevice>*)refCon;
@@ -314,12 +266,7 @@ void midiInputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
 
         if (g_client)
         {
-          // get connections of this client because jack_deactivate() destroys all connections but we need to deactivate to register new ports
-          WDL_PtrList<const char*> connPortsL;
-          WDL_PtrList<const char> myPortsL;
-          const char **allPorts=getConnections(myPortsL,connPortsL);
-            
-          jack_deactivate(g_client);
+          jack_deactivate(g_client);  // jack_deactivate() destroys all connections
           jack_set_process_callback (g_client, process, &g_devices);
           char buf[512];
           sprintf(buf,"Input port from %s",m_name_substr);
@@ -329,22 +276,14 @@ void midiInputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
             if (m_port)
             {
               m_handle = jack_port_by_name(g_client,ports[x]);
-              if (m_handle)
-              {
-                jack_connect(g_client, jack_port_name(m_handle), jack_port_name(m_port)); // client has to be active before connecting ports
-              }
-              else
+              if (!m_handle)
               {
                 jack_port_unregister(g_client, m_port);
                 m_port=NULL;
               }
             }
-            
-            // restore connections
-            setConnections(myPortsL,connPortsL);
           }
           else fprintf(stderr,"OSCII-bot/Jack: Could not activate client\n");
-          freeJackArrays(allPorts,connPortsL);
         }
         break;
       }
@@ -410,6 +349,10 @@ void midiInputDevice::run_input(WDL_FastString &textOut)
         }
       }
       jack_free(ports);
+    }
+    if (m_port && !jack_port_connected_to(m_port,m_name_used))
+    {
+      jack_connect(g_client, jack_port_name(m_handle), jack_port_name(m_port));
     }
   }
 }
@@ -483,10 +426,6 @@ void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
         m_last_open_time=get_time_precise();
         if (g_client)
         {
-          WDL_PtrList<const char*> connPortsL;
-          WDL_PtrList<const char> myPortsL;
-          const char **allPorts=getConnections(myPortsL,connPortsL);
-            
           jack_deactivate(g_client);
           jack_set_process_callback (g_client, process, &g_devices);
           char buf[512];
@@ -497,22 +436,14 @@ void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
             if (m_port)
             {
               m_handle = jack_port_by_name(g_client,ports[x]);
-              if (m_handle)
-              {
-                jack_connect(g_client, jack_port_name(m_port), jack_port_name(m_handle));
-              }
-              else
+              if (!m_handle)
               {
                 jack_port_unregister(g_client, m_port);
                 m_port=NULL;
               }
             }
-            
-            // restore connections
-            setConnections(myPortsL,connPortsL);
           }
           else fprintf(stderr,"OSCII-bot/Jack: Could not activate client\n");
-          freeJackArrays(allPorts,connPortsL);
         }
         break;
       }
@@ -575,6 +506,10 @@ void midiOutputDevice::run_output(WDL_FastString &textOut)
         }
       }
       jack_free(ports);
+    }
+    if (m_port && !jack_port_connected_to(m_port,m_name_used))
+    {
+      jack_connect(g_client, jack_port_name(m_port), jack_port_name(m_handle));
     }
   }
 }
