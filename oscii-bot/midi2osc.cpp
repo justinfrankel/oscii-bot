@@ -2,7 +2,7 @@
 // Copyright (C) 2014 and onward Cockos Incorporated
 // License: GPL
 
-#define OSCIIBOT_VERSION "0.6"
+#define OSCIIBOT_VERSION "0.7"
 #ifdef _WIN32
 #include <windows.h>
 #else
