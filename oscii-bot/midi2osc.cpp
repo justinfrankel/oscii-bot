@@ -2,7 +2,7 @@
 // Copyright (C) 2014 and onward Cockos Incorporated
 // License: GPL
 
-#define OSCIIBOT_VERSION "0.6"
+#define OSCIIBOT_VERSION "0.7"
 #ifdef _WIN32
 #include <windows.h>
 #else
@@ -739,7 +739,7 @@ void scriptInstance::clear()
     if (m_handles[x]) fclose(m_handles[x]); 
     m_handles[x]=0;
   }
-  for (x=0;x<sizeof(m_code)/sizeof(m_code[0]); x++) 
+  for (x=0;x<(int)(sizeof(m_code)/sizeof(m_code[0])); x++)
   {
     if (m_code[x]) NSEEL_code_free(m_code[x]);
     m_code[x]=0;
@@ -941,14 +941,14 @@ public:
 
     SET_SOCK_BLOCK(m_sendsock, true);
 
-    while (m_sendq.Available() >= sizeof(int))
+    while (m_sendq.Available() >= (int)sizeof(int))
     {
       int len=*(int*)m_sendq.Get(); // not advancing
       OSC_MAKEINTMEM4BE((char*)&len);
 
       if (len < 1 || len > MAX_OSC_MSG_LEN || len > m_sendq.Available()) break;             
         
-      if (packetlen > 16 && packetlen+sizeof(int)+len > m_maxpacketsz)
+      if (packetlen > 16 && packetlen+(int)sizeof(int)+len > m_maxpacketsz)
       {
         // packet is full
         if (!hasbundle)
@@ -1019,7 +1019,7 @@ public:
 
 void scriptInstance::compileCode(int parsestate, const WDL_FastString &curblock, WDL_FastString &results, int lineoffs)
 {
-  if (parsestate<0 || parsestate >= sizeof(m_code)/sizeof(m_code[0])) return;
+  if (parsestate<0 || (unsigned int)parsestate >= sizeof(m_code)/sizeof(m_code[0])) return;
 
   if (m_code[parsestate])
   {
@@ -1498,9 +1498,9 @@ void scriptInstance::load_script(WDL_FastString &results)
     {
       const char *tok=lp.gettoken_str(0);
       int x;
-      for (x=0;x<sizeof(g_code_names)/sizeof(g_code_names[0]) && strcmp(tok,g_code_names[x]);x++);
+      for (x=0;x<(int)(sizeof(g_code_names)/sizeof(g_code_names[0])) && strcmp(tok,g_code_names[x]);x++);
 
-      if (x < sizeof(g_code_names)/sizeof(g_code_names[0]))
+      if (x < (int)(sizeof(g_code_names)/sizeof(g_code_names[0])))
       {
         compileCode(parsestate,curblock,results,cursec_lineoffs);
         parsestate=x;
@@ -1585,7 +1585,6 @@ void scriptInstance::load_script(WDL_FastString &results)
               if (addr.sin_addr.s_addr == INADDR_NONE) addr.sin_addr.s_addr = INADDR_ANY;
               addr.sin_port=htons(port);
 
-              int x;
               bool is_reuse=false;
               oscDevice *r=NULL;
               for (x=0; x < g_devices.GetSize(); x++)
@@ -1722,7 +1721,6 @@ void scriptInstance::load_script(WDL_FastString &results)
             {
               const char *dp = lp.gettoken_str(3);
               oscDevice *r = NULL;
-              int x;
               bool is_reuse=false;
               for (x=0;x<g_devices.GetSize();x++)
               {
@@ -1880,7 +1878,7 @@ bool scriptInstance::run(double curtime, WDL_FastString &results)
 
     int pos=0;
     const int endpos = tmp.GetSize();
-    while (pos < endpos+1 - sizeof(incomingEvent))
+    while (pos < endpos+1 - (int)sizeof(incomingEvent))
     {
       incomingEvent *evt = (incomingEvent*) ((char *)tmp.Get()+pos);
       
@@ -2141,7 +2139,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         g_last_wndpos.bottom += g_last_wndpos.top;
         SetWindowPos(hwndDlg,NULL,g_last_wndpos.left,g_last_wndpos.top,g_last_wndpos.right-g_last_wndpos.left,g_last_wndpos.bottom-g_last_wndpos.top,SWP_NOZORDER|SWP_NOACTIVATE);
       }
-#ifdef __APPLE__
+#ifndef _WIN32
       ShowWindow(GetDlgItem(hwndDlg,IDCANCEL),SW_HIDE);
       {
         WDL_WndSizer__rec *r1=resize.get_item(IDCANCEL);
@@ -2181,7 +2179,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         WritePrivateProfileString("oscii-bot","wnd_h", tmp, g_ini_file.Get());
       }
       g_hwnd=NULL;
-#ifndef _WIN32
+#ifdef __APPLE__
       SWELL_PostQuitMessage(0);
 #endif
     break;
@@ -2254,8 +2252,7 @@ WDL_DLGRET mainProc(HWND hwndDlg, UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
           static WDL_FastString s;
           s.Set("");
-          int x;
-          for(x=0;x<sizeof(g_recent_events)/sizeof(g_recent_events[0]);x++)
+          for(x=0;x<(int)(sizeof(g_recent_events)/sizeof(g_recent_events[0]));x++)
           {
             int a = g_recent_events[x];
             if (!a) break;
@@ -2520,12 +2517,16 @@ BOOL systray_del(HWND hwnd, UINT uID) {
 
 
 #ifndef _WIN32
+#ifdef __APPLE__
 extern "C" {
+#endif
 
 char **g_argv;
 int g_argc;
 
+#ifdef __APPLE__
 };
+#endif
 
 INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
 {
@@ -2552,7 +2553,13 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
           if (p && *p)
           {
             g_default_script_path.Set(p);
-            g_default_script_path.Append("/Library/Application Support/OSCII-bot");
+            g_default_script_path.Append(
+#ifdef __APPLE__
+                "/Library/Application Support/OSCII-bot"
+#else
+                "/.config/OSCII-bot"
+#endif
+                );
             mkdir(g_default_script_path.Get(),0777);
             g_ini_file.Set(g_default_script_path.Get());
             g_ini_file.Append("/oscii-bot.ini");
@@ -2576,7 +2583,13 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
             printf(
             "Usage:\n"
             "%s [scriptfilename.txt ...] [-dir scriptwithtxtfiles]\n\n"
-            "If no script files specified, default will be all txt files in ~/Library/Application Support/OSCII-bot",g_argv[0]);
+            "If no script files specified, default will be all txt files in"
+#ifdef __APPLE__
+                "~/Library/Application Support/OSCII-bot"
+#else
+                "~/.config/OSCII-bot"
+#endif
+                ,g_argv[0]);
           }
         }
         initialize();
@@ -2596,16 +2609,16 @@ INT_PTR SWELLAppMain(int msg, INT_PTR parm1, INT_PTR parm2)
     case SWELLAPP_PROCESSMESSAGE:
       if (parm1)
       {
-        MSG *msg = (MSG *)parm1;
-        if (msg->hwnd && (msg->message == WM_KEYDOWN || msg->message == WM_KEYUP || msg->message == WM_CHAR))
+        MSG *m = (MSG *)parm1;
+        if (m->hwnd && (m->message == WM_KEYDOWN || m->message == WM_KEYUP || m->message == WM_CHAR))
         {
           int x;
           for(x=0;x<g_scripts.GetSize();x++)
           {
             scriptInstance *scr = g_scripts.Get(x);
-            if (scr->m_lice_state && scr->m_lice_state->hwnd_standalone == msg->hwnd)
+            if (scr->m_lice_state && scr->m_lice_state->hwnd_standalone == m->hwnd)
             {
-              SendMessage(msg->hwnd,msg->message,msg->wParam,msg->lParam);
+              SendMessage(m->hwnd,m->message,m->wParam,m->lParam);
               return 1;
             }
           }

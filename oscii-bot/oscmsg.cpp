@@ -347,7 +347,7 @@ const char* OscMessageWrite::GetBuffer(int* len)
 
   int arglen=m_arg_ptr-m_args; // already padded
 
-  if (msgpadlen+typepadlen+arglen > sizeof(m_msg)) 
+  if (msgpadlen+typepadlen+arglen > (int)sizeof(m_msg))
   {
     if (len) *len=0;
     return "";
