@@ -41,7 +41,9 @@
   #include <AvailabilityMacros.h>
 
   #if defined(__LP64__) || defined(MAC_OS_X_VERSION_10_6) // using 10.6+ SDK, force mprotect use
-    #define EEL_USE_MPROTECT
+    #ifndef EEL_USE_MPROTECT
+      #define EEL_USE_MPROTECT
+    #endif
   #endif
 #endif
 
@@ -841,6 +843,7 @@ opcodeRec *nseel_resolve_named_symbol(compileContext *ctx, opcodeRec *rec, int p
   unsigned char match_parmcnt_pos=0;
   char *sname = (char *)rec->relname;
   int is_string_prefix = parmcnt < 0 && sname[0] == '#';
+  const char *prevent_function_calls = NULL;
 
   if (errOut) *errOut = 0;
 
@@ -961,17 +964,20 @@ opcodeRec *nseel_resolve_named_symbol(compileContext *ctx, opcodeRec *rec, int p
   
     return rec;
   }
+
+  if (ctx->func_check)
+    prevent_function_calls = ctx->func_check(sname,ctx->func_check_user);
  
   ////////// function mode
   // first off, while() and loop() are special and can't be overridden
   //
-  if (parmcnt == 1 && !stricmp("while",sname))
+  if (parmcnt == 1 && !stricmp("while",sname) && !prevent_function_calls)
   {
     rec->opcodeType = OPCODETYPE_FUNC1;
     rec->fntype = FN_WHILE;
     return rec;
   }
-  if (parmcnt == 2 && !stricmp("loop",sname))
+  if (parmcnt == 2 && !stricmp("loop",sname) && !prevent_function_calls)
   {
     rec->opcodeType = OPCODETYPE_FUNC2;
     rec->fntype = FN_LOOP;
@@ -1079,6 +1085,14 @@ opcodeRec *nseel_resolve_named_symbol(compileContext *ctx, opcodeRec *rec, int p
       rec->fn = best;
       return rec;
     }    
+  }
+
+  if (prevent_function_calls)
+  {
+    if (ctx->last_error_string[0]) lstrcatn(ctx->last_error_string, ", ", sizeof(ctx->last_error_string));
+    snprintf_append(ctx->last_error_string,sizeof(ctx->last_error_string),"'%.30s': %s",sname, prevent_function_calls);
+    if (errOut) *errOut = 0;
+    return NULL;
   }
 
 #ifdef NSEEL_EEL1_COMPAT_MODE
@@ -1699,7 +1713,7 @@ static void *nseel_getEELFunctionAddress(compileContext *ctx,
             if (!rn) 
             {
               // todo: figure out how to give correct line number/offset (ugh)
-              snprintf(ctx->last_error_string,sizeof(ctx->last_error_string),"parameter %d to %s() must be namespace",x+1,fn->fname);
+              snprintf(ctx->last_error_string,sizeof(ctx->last_error_string),"parameter %d to %.120s() must be namespace",x+1,fn->fname);
               return NULL;
             }
 
@@ -2796,7 +2810,7 @@ static int compileNativeFunctionCall(compileContext *ctx, opcodeRec *op, unsigne
   #ifdef GLUE_HAS_FXCH
     int need_fxch=0;
   #endif
-    int last_nt_parm=-1, last_nt_parm_type;
+    int last_nt_parm=-1, last_nt_parm_type=-1;
     
     if (op->opcodeType == OPCODETYPE_FUNCX)
     {
@@ -5104,6 +5118,16 @@ int NSEEL_VM_setramsize(NSEEL_VMCTX _ctx, int maxent)
   return ctx->ram_state.maxblocks * NSEEL_RAM_ITEMSPERBLOCK;
 }
 
+void NSEEL_VM_SetFunctionValidator(NSEEL_VMCTX _ctx, const char * (*validateFunc)(const char *fn_name, void *user), void *user)
+{
+  if (_ctx)
+  {
+    compileContext *ctx = (compileContext *)_ctx;
+    ctx->func_check = validateFunc;
+    ctx->func_check_user = user;
+  }
+}
+
 void NSEEL_VM_SetFunctionTable(NSEEL_VMCTX _ctx, eel_function_table *tab)
 {
   if (_ctx)
@@ -5330,6 +5354,12 @@ EEL_F *nseel_int_register_var(compileContext *ctx, const char *name, int isReg, 
   int match_wb = -1, match_ti=-1;
   int wb;
   int ti=0;
+
+  if (isReg == 0 && ctx->getVariable)
+  {
+    EEL_F *ret = ctx->getVariable(ctx->getVariable_userctx, name);
+    if (ret) return ret;
+  }
 
   if (!strnicmp(name,"_global.",8) && name[8])
   {
@@ -5628,3 +5658,12 @@ opcodeRec *nseel_translate(compileContext *ctx, const char *tmp, size_t tmplen) 
   return nseel_createCompiledValue(ctx,(EEL_F)atof(tmp));
 }
 
+void NSEEL_VM_set_var_resolver(NSEEL_VMCTX _ctx, EEL_F *(*res)(void *userctx, const char *name), void *userctx)
+{
+  compileContext *ctx = (compileContext *)_ctx;
+  if (ctx)
+  {
+    ctx->getVariable = res;
+    ctx->getVariable_userctx = userctx;
+  }
+}
