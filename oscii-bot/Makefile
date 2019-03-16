@@ -26,8 +26,12 @@ ZLIB_OBJS = adler32.o compress.o crc32.o deflate.o infback.o inffast.o inflate.o
 
 JNET_OBJS = asyncdns.o connection.o listen.o util.o
 
-EEL_OBJS = asm-nseel-x64.o nseel-caltab.o nseel-cfunc.o nseel-compiler.o \
+EEL_OBJS = nseel-caltab.o nseel-cfunc.o nseel-compiler.o \
            nseel-eval.o nseel-lextab.o nseel-ram.o nseel-yylex.o
+
+ifeq ($(shell uname -m),x86_64)
+  EEL_OBJS += asm-nseel-x64.o
+endif
 
 OTHER_OBJS = wndsize.o filebrowse.o
 
