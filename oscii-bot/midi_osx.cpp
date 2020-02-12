@@ -141,7 +141,7 @@ void midiInputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
   m_lastmsgtime = time(NULL);
 
   int x;
-  const int n=MIDIGetNumberOfSources();
+  const int n=(int)MIDIGetNumberOfSources();
   int skipcnt = m_input_skipcnt;
   for(x=0;x<n;x++)
   {
@@ -229,8 +229,6 @@ void midiInputDevice::start()
 }
 void midiInputDevice::run_input(WDL_FastString &textOut)
 {
-  int x;
-
   const time_t now=time(NULL);
   if (now > m_lastmsgtime+5) // every 5s of inactivity, query status
   {
@@ -282,7 +280,7 @@ void midiOutputDevice::do_open(WDL_PtrList<ioDevice> *reuseDevList)
   m_failed_time=0;
 
   int x;
-  const int n=MIDIGetNumberOfDestinations();
+  const int n=(int)MIDIGetNumberOfDestinations();
   int skipcnt = m_skipcnt;
   for(x=0;x<n;x++)
   {

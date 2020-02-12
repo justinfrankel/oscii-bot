@@ -2521,7 +2521,7 @@ BOOL systray_del(HWND hwnd, UINT uID) {
 extern "C" {
 #endif
 
-char **g_argv;
+const char **g_argv;
 int g_argc;
 
 #ifdef __APPLE__

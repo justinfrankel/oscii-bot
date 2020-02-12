@@ -7,9 +7,9 @@
 #include "../WDL/swell/swell-internal.h"
 
 
-int main(int argc, char **argv)
+int main(int argc, const char **argv)
 {
-  extern char **g_argv;
+  extern const char **g_argv;
   extern int g_argc;
   extern HWND g_hwnd;
 
