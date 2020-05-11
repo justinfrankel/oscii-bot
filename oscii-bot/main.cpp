@@ -15,7 +15,7 @@ int main(int argc, const char **argv)
 
   g_argc=argc;
   g_argv=argv;
-  SWELL_initargs(&argc,&argv);
+  SWELL_initargs(&argc,(char***)&argv);
   SWELL_Internal_PostMessage_Init();
   SWELL_ExtendedAPI("APPNAME",(void*)"OSCII-bot");
   SWELLAppMain(SWELLAPP_ONLOAD,0,0);
