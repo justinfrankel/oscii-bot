@@ -642,6 +642,9 @@ __attribute__ ((visibility ("default"))) BOOL WINAPI DllMain(HINSTANCE hInstDLL,
 #define MB_ICONERROR 0
 #define MB_ICONSTOP 0
 #define MB_ICONINFORMATION 0
+#define MB_ICONQUESTION 0
+#define MB_TOPMOST 0
+#define MB_ICONEXCLAMATION 0
 
 #define IDOK                1
 #define IDCANCEL            2
@@ -666,10 +669,12 @@ __attribute__ ((visibility ("default"))) BOOL WINAPI DllMain(HINSTANCE hInstDLL,
 #define DWL_DLGPROC         (-8)
 
 #define SWELL_NOT_WS_VISIBLE ((int)0x80000000)
+// oops these don't match real windows
 #define WS_CHILDWINDOW (WS_CHILD)
 #define WS_CHILD        0x40000000L
 #define WS_DISABLED     0x08000000L
 #define WS_CLIPSIBLINGS 0x04000000L
+#define WS_VISIBLE      0x02000000L // only used by GetWindowLong(GWL_STYLE) -- not settable
 #define WS_CAPTION      0x00C00000L
 #define WS_VSCROLL      0x00200000L
 #define WS_HSCROLL      0x00100000L
@@ -679,8 +684,6 @@ __attribute__ ((visibility ("default"))) BOOL WINAPI DllMain(HINSTANCE hInstDLL,
 #define WS_TABSTOP      0x00010000L
 
 #define WS_BORDER 0 // ignored for now
-#define WS_VISIBLE 0
-
 
 #define WM_CTLCOLORMSGBOX 0x0132
 #define WM_CTLCOLOREDIT 0x0133
@@ -719,6 +722,7 @@ __attribute__ ((visibility ("default"))) BOOL WINAPI DllMain(HINSTANCE hInstDLL,
 #define LB_GETSELCOUNT          0x0190
 #define LB_GETITEMDATA          0x0199
 #define LB_SETITEMDATA          0x019A
+#define LB_FINDSTRINGEXACT      0x01A2
 
 #define TBM_GETPOS              (WM_USER)
 #define TBM_SETTIC              (WM_USER+4)
@@ -999,6 +1003,7 @@ __attribute__ ((visibility ("default"))) BOOL WINAPI DllMain(HINSTANCE hInstDLL,
 #define EM_GETSEL               0xF0B0
 #define EM_SETSEL               0xF0B1
 #define EM_SCROLL               0xF0B5
+#define EM_REPLACESEL           0xF0C2
 #define EM_SETPASSWORDCHAR      0xF0CC
 
 #define SB_HORZ             0

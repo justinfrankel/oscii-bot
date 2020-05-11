@@ -40,7 +40,7 @@ static void __curses_onresize(win32CursesCtx *ctx)
   if (p)
   {
     p->draw();
-    p->setCursor();
+    p->setCursorIfVisible();
   }
 }
 WDL_CursesEditor::WDL_CursesEditor(void *cursesCtx)
@@ -399,8 +399,8 @@ LRESULT WDL_CursesEditor::onMouseMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LP
 
           int y=m_curs_y+paney[m_curpane]-m_paneoffs_y[m_curpane];
           if (y >= paney[m_curpane] && y < paney[m_curpane]+paneh[m_curpane]) setCursor();
-          return 0;
         }
+        return 0;
       }
 
       if (uMsg == WM_LBUTTONDOWN) m_selecting=0;
@@ -443,8 +443,8 @@ LRESULT WDL_CursesEditor::onMouseMessage(HWND hwnd, UINT uMsg, WPARAM wParam, LP
           while (x2 < s->GetLength() && p[x2] > 0 && (isalnum(p[x2]) || p[x2] == '_')) ++x2;
           if (x2 > x1)
           {
-            m_select_x1=x1;
-            m_curs_x=m_select_x2=x2;
+            m_select_x1=WDL_utf8_bytepos_to_charpos(s->Get(),x1);
+            m_curs_x=m_select_x2=WDL_utf8_bytepos_to_charpos(s->Get(),x2);
             m_select_y1=m_select_y2=m_curs_y;
             m_selecting=1;
           }
@@ -784,6 +784,16 @@ void WDL_CursesEditor::setCursor(int isVscroll, double ycenter)
 
   y += paney[m_curpane];
   move(y, m_curs_x-m_offs_x);
+}
+
+void WDL_CursesEditor::setCursorIfVisible()
+{
+  if (WDL_NOT_NORMALLY(m_curpane != 0 && m_curpane != 1)) return;
+  int paney[2], paneh[2];
+  GetPaneDims(paney, paneh);
+  int y=m_curs_y-m_paneoffs_y[m_curpane];
+  if (y >= 0 && y < paneh[m_curpane])
+    setCursor();
 }
 
 void WDL_CursesEditor::draw_message(const char *str)
@@ -1289,6 +1299,12 @@ void WDL_CursesEditor::runSearch()
      }
      if (found)
      {
+       // make sure the end is on screen
+       m_offs_x = 0;
+       m_curs_x=wdl_max(m_select_x1,m_select_x2) + COLS/4;
+       setCursor();
+
+       m_curs_x = m_select_x1;
        draw();
        setCursor();
        char buf[512];
@@ -1687,90 +1703,19 @@ int WDL_CursesEditor::onChar(int c)
           if (m_curs_y < 0) m_curs_y=0;
 
           preSaveUndoState();
-          WDL_FastString poststr;
-          int x;
-          int indent_to_pos = -1;
-          int skip_source_indent=0; // number of characters of whitespace to (potentially) ignore when pasting
 
-          for (x = 0; x < lines.GetSize(); x ++)
-          {
-            WDL_FastString *str=m_text.Get(m_curs_y);
-            const char *tstr=lines.Get(x);
-            if (!tstr) tstr="";
-            if (!x)
-            {
-              if (str)
-              {
-                int bytepos = WDL_utf8_charpos_to_bytepos(str->Get(),m_curs_x);
-
-                if (bytepos < 0) bytepos=0;
-                int tmp=str->GetLength();
-                if (bytepos > tmp) bytepos=tmp;
-  
-                poststr.Set(str->Get()+bytepos);
-                str->SetLen(bytepos);
-
-                const char *p = str->Get();
-                while (*p == ' ' || *p == '\t') p++;
-                if (!*p && p > str->Get()) // if all whitespace leading up to this
-                {
-                  if (bytepos > 0)
-                  {
-                    int i;
-                    skip_source_indent=1024;
-                    for (i = 0; skip_source_indent > 0 && i < lines.GetSize(); i ++)
-                    {
-                      int a=0;
-                      const char *p = lines.Get(i);
-                      while (a < skip_source_indent && p[a] == ' ') a++;
-                      if (a < skip_source_indent && p[a]) skip_source_indent=a;
-                    }
-                  }
-
-                  indent_to_pos = bytepos;
-                }
-
-                str->Append(skip_indent(tstr,skip_source_indent));
-              }
-              else
-              {
-                m_text.Insert(m_curs_y,(str=new WDL_FastString(skip_indent(tstr,skip_source_indent))));
-              }
-
-              if (lines.GetSize() > 1)
-              {
-                m_curs_y++;
-              }
-              else
-              {
-                m_curs_x = WDL_utf8_get_charlen(str->Get());
-                str->Append(poststr.Get());
-              }
-           }
-           else if (x == lines.GetSize()-1)
-           {
-             WDL_FastString *s=newIndentedFastString(skip_indent(tstr,skip_source_indent),indent_to_pos);
-             m_curs_x = WDL_utf8_get_charlen(s->Get());
-             s->Append(poststr.Get());
-             m_text.Insert(m_curs_y,s);
-           }
-           else
-           {
-             m_text.Insert(m_curs_y,newIndentedFastString(skip_indent(tstr,skip_source_indent),indent_to_pos));
-             m_curs_y++;
-           }
-         }
-         draw();
-         setCursor();
-         draw_message("Pasted");
-         saveUndoState();
-       }
-       else 
-       {
-         setCursor();
-         draw_message("Clipboard empty");
-       }
-     }
+          do_paste_lines(lines);
+          draw();
+          setCursor();
+          draw_message("Pasted");
+          saveUndoState();
+        }
+        else 
+        {
+          setCursor();
+          draw_message("Clipboard empty");
+        }
+      }
   break;
 
   case KEY_DC:
@@ -1809,7 +1754,9 @@ int WDL_CursesEditor::onChar(int c)
             WDL_FastString *nl=m_text.Get(m_curs_y+1);
             if (nl)
             {
-              s->Append(nl->Get());
+              const char *p = nl->Get();
+              while ((*p == ' ' || *p == '\t') && (p[1] == ' ' || p[1] == '\t')) p++;
+              s->Append(p);
             }
             m_text.Delete(m_curs_y+1,true);
 
@@ -1942,6 +1889,70 @@ int WDL_CursesEditor::onChar(int c)
       draw_message(status);
     }
   break;
+  case 'D'-'A'+1:
+    if (!SHIFT_KEY_DOWN && !ALT_KEY_DOWN)
+    {
+      if (m_selecting)
+      {
+        int miny,maxy,minx,maxx;
+        getselectregion(minx,miny,maxx,maxy);
+
+        if (minx != maxx|| miny != maxy) 
+        {
+          WDL_FastString dup;
+
+          int x;
+          for (x = miny; x <= maxy; x ++)
+          {
+            WDL_FastString *s=m_text.Get(x);
+            if (s) 
+            {
+              const char *str=s->Get();
+              const int sx=x == miny ? WDL_utf8_charpos_to_bytepos(str,minx) : 0;
+              const int ex=x == maxy ? WDL_utf8_charpos_to_bytepos(str,maxx) : s->GetLength();
+              if (dup.GetLength()) dup.Append("\n");
+              dup.Append(ex-sx?str+sx:"",ex-sx);
+            }
+          }
+
+          if (dup.GetLength())
+          {
+            preSaveUndoState();
+            WDL_PtrList<const char> lines;
+            char *p = (char *)dup.Get();
+            for (;;)
+            {
+              const char *basep = p;
+              while (*p && *p != '\n') p++;
+              lines.Add(basep);
+              if (!*p) break;
+              *p++=0;
+            }
+            m_curs_x=maxx;
+            m_curs_y=maxy;
+            do_paste_lines(lines);
+            m_curs_x=maxx;
+            m_curs_y=maxy;
+
+            draw();
+            setCursor();
+            draw_message("Duplicated selection");
+            saveUndoState();
+          }
+        }
+      }
+      else if (m_text.Get(m_curs_y))
+      {
+        preSaveUndoState();
+        m_text.Insert(m_curs_y, new WDL_FastString(m_text.Get(m_curs_y)));
+        draw();
+        setCursor();
+        draw_message("Duplicated line");
+        saveUndoState();
+      }
+    }
+  break;
+
   case 'A'-'A'+1:
     if (!SHIFT_KEY_DOWN && !ALT_KEY_DOWN)
     {
@@ -2240,7 +2251,11 @@ int WDL_CursesEditor::onChar(int c)
       {
         preSaveUndoState();
         m_curs_x=WDL_utf8_get_charlen(fl->Get());
-        fl->Append(tl->Get());
+
+        // if tl is all whitespace, don't bother appending to the previous line
+        const char *p = tl->Get();
+        while (*p == ' ' || *p == '\t') p++;
+        if (*p) fl->Append(tl->Get());
 
         m_text.Delete(m_curs_y--,true);
         draw();
@@ -2297,11 +2312,13 @@ int WDL_CursesEditor::onChar(int c)
         WDL_FastString *nl = new WDL_FastString();
         int plen=0;
         const char *pb = s->Get();
-        while (plen < bytepos && (pb[plen]== ' ' || pb[plen] == '\t')) plen++;
+        while (pb[plen]== ' ' || pb[plen] == '\t') plen++;
 
         if (plen>0) nl->Set(pb,plen);
 
-        nl->Append(pb+bytepos);
+        const char *insert = pb+bytepos;
+        while (*insert == ' ' || *insert == '\t') insert++;
+        nl->Append(insert);
         m_text.Insert(++m_curs_y,nl);
         s->SetLen(bytepos);
         m_curs_x=WDL_utf8_bytepos_to_charpos(nl->Get(),plen);
@@ -2512,10 +2529,12 @@ void WDL_CursesEditor::loadUndoState(editUndoRec *rec, int idx)
 
 void WDL_CursesEditor::RunEditor()
 {
+  WDL_DestroyCheck chk(&destroy_check);
+
   int x;
   for(x=0;x<16;x++)
   {
-    if (!CURSES_INSTANCE) break;
+    if (!chk.isOK() || !CURSES_INSTANCE) break;
 
     int thischar = getch();
     if (thischar==ERR) break;
@@ -2645,3 +2664,79 @@ void WDL_CursesEditor::OpenFileInTab(const char *fnp)
   }
 }
 
+void WDL_CursesEditor::do_paste_lines(WDL_PtrList<const char> &lines)
+{
+  WDL_FastString poststr;
+  int x;
+  int indent_to_pos = -1;
+  int skip_source_indent=0; // number of characters of whitespace to (potentially) ignore when pasting
+
+  for (x = 0; x < lines.GetSize(); x ++)
+  {
+    WDL_FastString *str=m_text.Get(m_curs_y);
+    const char *tstr=lines.Get(x);
+    if (!tstr) tstr="";
+    if (!x)
+    {
+      if (str)
+      {
+        int bytepos = WDL_utf8_charpos_to_bytepos(str->Get(),m_curs_x);
+
+        if (bytepos < 0) bytepos=0;
+        int tmp=str->GetLength();
+        if (bytepos > tmp) bytepos=tmp;
+
+        poststr.Set(str->Get()+bytepos);
+        str->SetLen(bytepos);
+
+        const char *p = str->Get();
+        while (*p == ' ' || *p == '\t') p++;
+        if (!*p && p > str->Get()) // if all whitespace leading up to this
+        {
+          if (bytepos > 0)
+          {
+            int i;
+            skip_source_indent=1024;
+            for (i = 0; skip_source_indent > 0 && i < lines.GetSize(); i ++)
+            {
+              int a=0;
+              const char *p = lines.Get(i);
+              while (a < skip_source_indent && p[a] == ' ') a++;
+              if (a < skip_source_indent && p[a]) skip_source_indent=a;
+            }
+          }
+
+          indent_to_pos = bytepos;
+        }
+
+        str->Append(skip_indent(tstr,skip_source_indent));
+      }
+      else
+      {
+        m_text.Insert(m_curs_y,(str=new WDL_FastString(skip_indent(tstr,skip_source_indent))));
+      }
+
+      if (lines.GetSize() > 1)
+      {
+        m_curs_y++;
+      }
+      else
+      {
+        m_curs_x = WDL_utf8_get_charlen(str->Get());
+        str->Append(poststr.Get());
+      }
+    }
+    else if (x == lines.GetSize()-1)
+    {
+      WDL_FastString *s=newIndentedFastString(skip_indent(tstr,skip_source_indent),indent_to_pos);
+      m_curs_x = WDL_utf8_get_charlen(s->Get());
+      s->Append(poststr.Get());
+      m_text.Insert(m_curs_y,s);
+    }
+    else
+    {
+      m_text.Insert(m_curs_y,newIndentedFastString(skip_indent(tstr,skip_source_indent),indent_to_pos));
+      m_curs_y++;
+    }
+  }
+}

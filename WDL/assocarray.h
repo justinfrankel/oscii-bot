@@ -2,7 +2,7 @@
 #define _WDL_ASSOCARRAY_H_
 
 #include "heapbuf.h"
-
+#include "mergesort.h"
 
 // on all of these, if valdispose is set, the array will dispose of values as needed.
 // if keydup/keydispose are set, copies of (any) key data will be made/destroyed as necessary
@@ -140,26 +140,27 @@ public:
   void ChangeKey(KEY oldkey, KEY newkey)
   {
     bool ismatch=false;
-    int i = LowerBound(oldkey, &ismatch);
-    if (ismatch)
-    {
-      KeyVal* kv = m_data.Get()+i;
-      if (m_keydispose) m_keydispose(kv->key);
-      if (m_keydup) newkey = m_keydup(newkey);
-      kv->key = newkey;
-      Resort();
-    }
+    int i=LowerBound(oldkey, &ismatch);
+    if (ismatch) ChangeKeyByIndex(i, newkey, true);
   }
 
   void ChangeKeyByIndex(int idx, KEY newkey, bool needsort)
   {
     if (idx >= 0 && idx < m_data.GetSize())
     {
-      KeyVal* kv = m_data.Get()+idx;
-      if (m_keydispose) m_keydispose(kv->key);
-      if (m_keydup) newkey = m_keydup(newkey);
-      kv->key = newkey;
-      if (needsort) Resort();
+      KeyVal* kv=m_data.Get()+idx;
+      if (!needsort)
+      {
+        if (m_keydispose) m_keydispose(kv->key);
+        if (m_keydup) newkey=m_keydup(newkey);
+        kv->key=newkey;
+      }
+      else
+      {
+        VAL val=kv->val;
+        m_data.Delete(idx);
+        Insert(newkey, val);
+      }
     }
   }
 
@@ -173,25 +174,27 @@ public:
     kv->val = val;
   }
 
-  void Resort()
+  void Resort(int (*new_keycmp)(KEY *k1, KEY *k2)=NULL)
+  {
+    if (new_keycmp) m_keycmp = new_keycmp;
+    if (m_data.GetSize() > 1 && m_keycmp)
+    {
+      qsort(m_data.Get(), m_data.GetSize(), sizeof(KeyVal),
+        (int(*)(const void*, const void*))m_keycmp);
+      if (!new_keycmp)
+        RemoveDuplicateKeys();
+    }
+  }
+
+  void ResortStable()
   {
     if (m_data.GetSize() > 1 && m_keycmp)
     {
-      qsort(m_data.Get(),m_data.GetSize(),sizeof(KeyVal),(int(*)(const void *,const void *))m_keycmp);
-
-      // AddUnsorted can add duplicate keys
-      // unfortunately qsort is not guaranteed to preserve order,
-      // ideally this filter would always preserve the last-added key
-      int i;
-      for (i=0; i < m_data.GetSize()-1; ++i)
-      {
-        KeyVal* kv=m_data.Get()+i;
-        KeyVal* nv=kv+1;
-        if (!m_keycmp(&kv->key, &nv->key))
-        {
-          DeleteByIndex(i--);
-        }
-      }
+      char *tmp=(char*)malloc(m_data.GetSize()*sizeof(KeyVal));
+      WDL_mergesort(m_data.Get(), m_data.GetSize(), sizeof(KeyVal),
+        (int(*)(const void*, const void*))m_keycmp, tmp);
+      free(tmp);
+      RemoveDuplicateKeys();
     }
   }
 
@@ -272,6 +275,23 @@ protected:
   void (*m_keydispose)(KEY);
   void (*m_valdispose)(VAL);
 
+private:
+
+  void RemoveDuplicateKeys() // after resorting
+  {
+    // will be expensive if there are a lot of duplicates,
+    // in which case use m_data.DeleteBatch()
+    int i;
+    for (i=0; i < m_data.GetSize()-1; ++i)
+    {
+      KeyVal* kv=m_data.Get()+i;
+      KeyVal* nv=kv+1;
+      if (!m_keycmp(&kv->key, &nv->key))
+      {
+        DeleteByIndex(i--);
+      }
+    }
+  }
 };
 
 
@@ -375,10 +395,10 @@ public:
   
   ~WDL_LogicalSortStringKeyedArray() { }
 
-private:
-
   static int cmpstr(const char **a, const char **b) { return _cmpstr(*a, *b, true); }
   static int cmpistr(const char **a, const char **b) { return _cmpstr(*a, *b, false); }
+
+private:
 
   static int _cmpstr(const char *s1, const char *s2, bool case_sensitive)
   {

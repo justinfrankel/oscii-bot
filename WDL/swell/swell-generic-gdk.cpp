@@ -25,6 +25,8 @@
 
 #include "swell.h"
 
+//#define SWELL_GDK_IMPROVE_WINDOWRECT // does not work yet (gdk_window_get_frame_extents() does not seem to be sufficiently reliable)
+
 #ifdef SWELL_PRELOAD
 #define STR(x) #x
 #define STR2(x) STR(x)
@@ -105,7 +107,7 @@ static GdkEvent *s_cur_evt;
 static GList *s_program_icon_list;
 
 static SWELL_OSWINDOW swell_dragsrc_osw;
-static DWORD swell_dragsrc_timeout;
+static DWORD swell_dragsrc_timeout_start;
 static HWND swell_dragsrc_hwnd;
 static DWORD swell_lastMessagePos;
 static int gdk_options;
@@ -450,6 +452,8 @@ static void init_options()
   
 }
 
+bool IsModalDialogBox(HWND);
+
 void swell_oswindow_manage(HWND hwnd, bool wantfocus)
 {
   if (!hwnd) return;
@@ -477,9 +481,19 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
         {
           HWND own = hwnd->m_owner;
           while (own->m_parent && !own->m_oswindow) own=own->m_parent;
-          transient_for = own->m_oswindow;
 
-          if (!transient_for) return; // defer
+          if (!own->m_oswindow)
+          { 
+            if (!IsModalDialogBox(hwnd)) return; // defer
+
+            // if a modal window, parent to any owner up the chain
+            while (own->m_owner && !own->m_oswindow)
+            {
+              own = own->m_owner;
+              while (own->m_parent && !own->m_oswindow) own=own->m_parent;
+            }
+          }
+          transient_for = own->m_oswindow;
         }
 
         RECT r = hwnd->m_position;
@@ -583,10 +597,7 @@ void swell_oswindow_manage(HWND hwnd, bool wantfocus)
 
           if (!hwnd->m_oswindow_fullscreen)
           {
-            if (hwnd->m_has_had_position) 
-              gdk_window_move_resize(hwnd->m_oswindow,r.left,r.top,r.right-r.left,r.bottom-r.top);
-            else 
-              gdk_window_resize(hwnd->m_oswindow,r.right-r.left,r.bottom-r.top);
+            swell_oswindow_resize(hwnd->m_oswindow,hwnd->m_has_had_position?3:2,r);
           }
 
           if ((gdk_options&OPTION_KEEP_OWNED_ABOVE) && hwnd->m_owned_list)
@@ -1007,7 +1018,9 @@ static void OnKeyEvent(GdkEventKey *k)
   else if (foc && foc->m_oswindow && !(foc->m_style&WS_CAPTION)) hwnd=foc; // for menus, event sent to other window due to gdk_window_set_override_redirect()
 
   MSG msg = { hwnd, msgtype, kv, modifiers, };
-  if (SWELLAppMain(SWELLAPP_PROCESSMESSAGE,(INT_PTR)&msg,0)<=0)
+  INT_PTR extra_flags = 0;
+  if (DialogBoxIsActive()) extra_flags |= 1;
+  if (SWELLAppMain(SWELLAPP_PROCESSMESSAGE,(INT_PTR)&msg,extra_flags)<=0)
     SendMessage(hwnd, msg.message, kv, modifiers);
 }
 
@@ -1082,11 +1095,10 @@ static void OnButtonEvent(GdkEventButton *b)
 
   if (b->type == GDK_BUTTON_PRESS)
   {
-    DWORD now = GetTickCount();;
     HWND oldFocus=GetFocus();
     if (!oldFocus || 
         oldFocus != hwnd2 ||
-       (now >= s_last_focus_change_time && now < (s_last_focus_change_time+500)))
+        (GetTickCount()-s_last_focus_change_time) < 500)
     {
       if (IsWindowEnabled(hwnd2))
         SendMessage(hwnd2,WM_MOUSEACTIVATE,0,0);
@@ -1304,6 +1316,8 @@ static void deactivateTimer(HWND hwnd, UINT uMsg, UINT_PTR tm, DWORD dwt)
     on_deactivate();
 }
 
+extern SWELL_OSWINDOW swell_ignore_focus_oswindow;
+extern DWORD swell_ignore_focus_oswindow_until;
 
 static void swell_gdkEventHandler(GdkEvent *evt, gpointer data)
 {
@@ -1324,7 +1338,11 @@ static void swell_gdkEventHandler(GdkEvent *evt, gpointer data)
           {
             s_last_focus_change_time = GetTickCount();
             swell_on_toplevel_raise(fc->window);
-            SWELL_focused_oswindow = fc->window;
+            if (swell_ignore_focus_oswindow != fc->window || 
+                (GetTickCount()-swell_ignore_focus_oswindow_until) < 0x10000000)
+            {
+              SWELL_focused_oswindow = fc->window;
+            }
             if (swell_app_is_inactive)
             {
               on_activate(0);
@@ -1332,16 +1350,7 @@ static void swell_gdkEventHandler(GdkEvent *evt, gpointer data)
           }
           else if (!swell_app_is_inactive)
           {
-            GdkWindow *window = gdk_screen_get_active_window(gdk_screen_get_default());
-            if (!is_our_oswindow(window))
-            {
-              on_deactivate();
-            }
-            else
-            {
-              s_deactivate_timer = SetTimer(NULL,0,200,deactivateTimer);
-              DestroyPopupMenus();
-            }
+            s_deactivate_timer = SetTimer(NULL,0,200,deactivateTimer);
           }
         }
     break;
@@ -1591,15 +1600,24 @@ bool GetWindowRect(HWND hwnd, RECT *r)
   if (!hwnd) return false;
   if (hwnd->m_oswindow)
   {
+#ifdef SWELL_GDK_IMPROVE_WINDOWRECT
+    GdkRectangle gr;
+    gdk_window_get_frame_extents(hwnd->m_oswindow,&gr);
+
+    r->left=gr.x;
+    r->top=gr.y;
+    r->right=gr.x + gr.width;
+    r->bottom = gr.y + gr.height;
+#else
+    // this is wrong (returns client rect in screen coordinates), but gdk_window_get_frame_extents() doesn't seem to work 
     gint x=hwnd->m_position.left,y=hwnd->m_position.top;
-
-    // need to get the origin of the frame for consistency with SetWindowPos()
     gdk_window_get_root_origin(hwnd->m_oswindow,&x,&y);
-
     r->left=x;
     r->top=y;
     r->right=x + hwnd->m_position.right - hwnd->m_position.left;
     r->bottom = y + hwnd->m_position.bottom - hwnd->m_position.top;
+#endif
+
     return true;
   }
 
@@ -1618,6 +1636,19 @@ void swell_oswindow_begin_resize(SWELL_OSWINDOW wnd)
 
 void swell_oswindow_resize(SWELL_OSWINDOW wnd, int reposflag, RECT f)
 {
+#ifdef SWELL_GDK_IMPROVE_WINDOWRECT
+  if (reposflag & 2)
+  {
+    // increase size to include titlebars etc
+    GdkRectangle gr;
+    gdk_window_get_frame_extents(wnd,&gr);
+    gint cw=gr.width, ch=gr.height;
+    gdk_window_get_geometry(wnd,NULL,NULL,&cw,&ch);
+    // when it matters, this seems to always make gr.height=ch, which is pointless
+    f.right -= gr.width - cw;
+    f.bottom -= gr.height - ch;
+  }
+#endif
   if ((reposflag&3)==3) gdk_window_move_resize(wnd,f.left,f.top,f.right-f.left,f.bottom-f.top);
   else if (reposflag&2) gdk_window_resize(wnd,f.right-f.left,f.bottom-f.top);
   else if (reposflag&1) gdk_window_move(wnd,f.left,f.top);
@@ -1629,7 +1660,7 @@ void swell_oswindow_postresize(HWND hwnd, RECT f)
   {
     gdk_window_show(hwnd->m_oswindow);
     if (hwnd->m_style & WS_CAPTION) gdk_window_unmaximize(hwnd->m_oswindow); // fixes Kwin
-    gdk_window_move_resize(hwnd->m_oswindow,f.left,f.top,f.right-f.left,f.bottom-f.top); // fixes xfce
+    swell_oswindow_resize(hwnd->m_oswindow,3,f); // fixes xfce
     hwnd->m_oswindow_private &= ~PRIVATE_NEEDSHOW;
   }
 }
@@ -1711,8 +1742,7 @@ static HANDLE req_clipboard(GdkAtom type)
         return NULL;
       }
 
-      DWORD now = GetTickCount();
-      if (now < startt-1000 || now > startt+500) break;
+      if ((GetTickCount()-startt) > 500) break;
       Sleep(10);
     }
   }
@@ -1869,7 +1899,11 @@ static WDL_PtrList<bridgeState> filter_windows;
 bridgeState::~bridgeState() 
 { 
   filter_windows.DeletePtr(this); 
-  if (w) gdk_window_destroy(w);
+  if (w) 
+  {
+    g_object_unref(G_OBJECT(w));
+    XDestroyWindow(native_disp,native_w);
+  }
 }
 bridgeState::bridgeState(bool needrep, GdkWindow *_w, Window _nw, Display *_disp)
 {
@@ -2156,7 +2190,7 @@ static LRESULT WINAPI dropSourceWndProc(HWND hwnd, UINT msg, WPARAM wParam, LPAR
           sel = gdk_drag_get_selection(inf->dragctx);
           if (sel) gdk_selection_owner_set(swell_dragsrc_osw,sel,GDK_CURRENT_TIME,TRUE);
         }
-        swell_dragsrc_timeout = GetTickCount() + 500;
+        swell_dragsrc_timeout_start = GetTickCount();
         return 0;
       }
       ReleaseCapture();
@@ -2216,7 +2250,7 @@ void SWELL_InitiateDragDrop(HWND hwnd, RECT* srcrect, const char* srcfn, void (*
   info.callback = callback;
   RECT r={0,};
   HWND__ *h = new HWND__(NULL,0,&r,NULL,false,NULL,dropSourceWndProc, NULL);
-  swell_dragsrc_timeout = 0;
+  swell_dragsrc_timeout_start = 0;
   swell_dragsrc_hwnd=h;
   h->m_private_data = (INT_PTR) &info;
   dropSourceWndProc(h,WM_CREATE,0,0);
@@ -2224,7 +2258,7 @@ void SWELL_InitiateDragDrop(HWND hwnd, RECT* srcrect, const char* srcfn, void (*
   {
     SWELL_RunEvents();
     Sleep(10);
-    if (swell_dragsrc_timeout && GetTickCount()>swell_dragsrc_timeout) ReleaseCapture();
+    if (swell_dragsrc_timeout_start && (GetTickCount()-swell_dragsrc_timeout_start) > 500) ReleaseCapture();
   }
   
   swell_dragsrc_hwnd=NULL;
@@ -2239,7 +2273,7 @@ void SWELL_InitiateDragDropOfFileList(HWND hwnd, RECT *srcrect, const char **src
   info.srccount = srccount;
   RECT r={0,};
   HWND__ *h = new HWND__(NULL,0,&r,NULL,false,NULL,dropSourceWndProc, NULL);
-  swell_dragsrc_timeout = 0;
+  swell_dragsrc_timeout_start = 0;
   swell_dragsrc_hwnd=h;
   h->m_private_data = (INT_PTR) &info;
   dropSourceWndProc(h,WM_CREATE,0,0);
@@ -2247,7 +2281,7 @@ void SWELL_InitiateDragDropOfFileList(HWND hwnd, RECT *srcrect, const char **src
   {
     SWELL_RunEvents();
     Sleep(10);
-    if (swell_dragsrc_timeout && GetTickCount()>swell_dragsrc_timeout) ReleaseCapture();
+    if (swell_dragsrc_timeout_start && (GetTickCount()-swell_dragsrc_timeout_start) > 500) ReleaseCapture();
   }
   
   swell_dragsrc_hwnd=NULL;

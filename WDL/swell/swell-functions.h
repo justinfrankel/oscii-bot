@@ -203,6 +203,7 @@ SWELL_API_DEFINE(BOOL, SetDlgItemText,(HWND, int idx, const char *text))
 SWELL_API_DEFINE(BOOL, SetDlgItemInt,(HWND, int idx, int val, int issigned))
 SWELL_API_DEFINE(int, GetDlgItemInt,(HWND, int idx, BOOL *translated, int issigned))
 SWELL_API_DEFINE(BOOL, GetDlgItemText,(HWND, int idx, char *text, int textlen))
+SWELL_API_DEFINE(int, GetWindowTextLength,(HWND))
 
 #ifndef GetWindowText
 #define GetWindowText(hwnd,text,textlen) GetDlgItemText(hwnd,0,text,textlen)
@@ -421,13 +422,10 @@ SWELL_API_DEFINE(void, ListView_SetItemCount,(HWND h, int cnt))
 #define ListView_SetItemCountEx(list,cnt,flags) ListView_SetItemCount(list,cnt)
 
 SWELL_API_DEFINE(void, ListView_EnsureVisible,(HWND h, int i, BOOL pok))
-SWELL_API_DEFINE(bool, ListView_GetSubItemRect,(HWND h, int item, int subitem, int code, RECT *r))
 SWELL_API_DEFINE(void, ListView_SetImageList,(HWND h, HIMAGELIST imagelist, int which)) 
-SWELL_API_DEFINE(int, ListView_HitTest,(HWND h, LVHITTESTINFO *pinf))
 SWELL_API_DEFINE(int, ListView_SubItemHitTest,(HWND h, LVHITTESTINFO *pinf))
 SWELL_API_DEFINE(void, ListView_GetItemText,(HWND hwnd, int item, int subitem, char *text, int textmax))
 SWELL_API_DEFINE(void, ListView_SortItems,(HWND hwnd, PFNLVCOMPARE compf, LPARAM parm))
-SWELL_API_DEFINE(bool, ListView_GetItemRect,(HWND h, int item, RECT *r, int code))
 SWELL_API_DEFINE(bool, ListView_Scroll,(HWND h, int xscroll, int yscroll))
 SWELL_API_DEFINE(int, ListView_GetTopIndex,(HWND h))
 SWELL_API_DEFINE(int, ListView_GetCountPerPage,(HWND h))
@@ -437,6 +435,15 @@ SWELL_API_DEFINE(HWND, ListView_GetHeader,(HWND h))
 SWELL_API_DEFINE(int, Header_GetItemCount,(HWND h))
 SWELL_API_DEFINE(BOOL, Header_GetItem,(HWND h, int col, HDITEM* hi))
 SWELL_API_DEFINE(BOOL, Header_SetItem,(HWND h, int col, HDITEM* hi))
+
+  // NOTE: the Cocoa versions of these functions behave differently than swell-generic and Windows:
+  // they return the absolute (unscrolled) coordinates. In order to behave properly, the caller should
+  // use ClientToScreen in order to get to screen coordinates, and then convert those as desired.
+SWELL_API_DEFINE(bool, ListView_GetItemRect,(HWND h, int item, RECT *r, int code))
+SWELL_API_DEFINE(bool, ListView_GetSubItemRect,(HWND h, int item, int subitem, int code, RECT *r))
+  // NOTE: Cocoa version takes absolute (unscrolled) coordinates. ScreenToClient(listview) will convert screen
+  // coordinates to the correct coorindates
+SWELL_API_DEFINE(int, ListView_HitTest,(HWND h, LVHITTESTINFO *pinf))
 
 SWELL_API_DEFINE(int, SWELL_GetListViewHeaderHeight, (HWND h))
 
@@ -821,12 +828,14 @@ SWELL_API_DEFINE(void,SWELL_EnsureMultithreadedCocoa,())
 SWELL_API_DEFINE(void *, SWELL_InitAutoRelease,())
 SWELL_API_DEFINE(void, SWELL_QuitAutoRelease,(void *p))
 SWELL_API_DEFINE(int,SWELL_TerminateProcess,(HANDLE hand))
-SWELL_API_DEFINE(int,SWELL_GetProcessExitCode,(HANDLE hand))
 SWELL_API_DEFINE(HANDLE,SWELL_CreateProcessIO,(const char *exe, int nparams, const char **params, bool redirectIO))
 SWELL_API_DEFINE(int,SWELL_ReadWriteProcessIO,(HANDLE, int w/*stdin,stdout,stderr*/, char *buf, int bufsz))
+#else
+SWELL_API_DEFINE(HANDLE,SWELL_CreateProcessFromPID,(int pid))
 #endif
 
 SWELL_API_DEFINE(HANDLE,SWELL_CreateProcess,(const char *exe, int nparams, const char **params))
+SWELL_API_DEFINE(int,SWELL_GetProcessExitCode,(HANDLE hand))
 
 
 SWELL_API_DEFINE(HINSTANCE,LoadLibraryGlobals,(const char *fileName, bool symbolsAsGlobals))
@@ -961,6 +970,15 @@ SWELL_API_DEFINE(bool, SWELL_GetViewGL, (HWND h))
 SWELL_API_DEFINE(bool, SWELL_SetGLContextToView, (HWND h)) // sets GL context to that view, returns TRUE if successs (use NULL to clear GL context)
 #endif
 
+#if defined(SWELL_TARGET_OSX) && !defined(SWELL_NO_METAL)
+SWELL_API_DEFINE(int, SWELL_EnableMetal,(HWND h, int mode)) // can only call once per window. calling with 0 does nothing. 1=metal enabled, 2=metal enabled and support GetDC()/ReleaseDC() for drawing (more overhead). returns metal setting. mode=-1 for non-metal async layered mode. mode=-2 for non-metal non-async layered mode
+  // NOTE: if using SWELL_EnableMetal(-1), any BitBlt()/StretchBlt() __MUST__ have the source bitmap persist. If it is resized after Blit it could cause crashes, too. So really this method is unsafe for practical use.
+#else
+  #ifndef SWELL_EnableMetal
+  #define SWELL_EnableMetal(hwnd,x) (void)(x)
+  #endif
+#endif
+
 SWELL_API_DEFINE(HDC, BeginPaint,(HWND, PAINTSTRUCT *))
 SWELL_API_DEFINE(BOOL, EndPaint,(HWND, PAINTSTRUCT *))
 
@@ -998,6 +1016,7 @@ SWELL_API_DEFINE(void,SWELL_DrawFocusRect,(HWND hwndPar, RECT *rct, void **handl
 #ifdef SWELL_TARGET_OSX
 SWELL_API_DEFINE(void,SWELL_SetWindowRepre,(HWND hwnd, const char *fn, bool isDirty)) // sets the represented file and edited state
 SWELL_API_DEFINE(void,SWELL_PostQuitMessage,(void *sender))
+SWELL_API_DEFINE(bool,SWELL_osx_is_dark_mode,(int mode)) // mode=0 for dark mode enabled enabled, 1=dark mode allowed (Breaks various things)
 #endif
 
 /*
@@ -1061,10 +1080,8 @@ SWELL_API_DEFINE(int,SWELL_GetOSXVersion,())
 
 SWELL_API_DEFINE(void,SWELL_Register_Cursor_Resource,(const char *idx, const char *name, int hotspot_x, int hotspot_y))
 
-#ifndef SWELL_TARGET_OSX
-SWELL_API_DEFINE(bool, SWELL_ChooseColor, (HWND, int *, int ncustom, int *custom))
+SWELL_API_DEFINE(bool, SWELL_ChooseColor, (HWND, COLORREF *, int ncustom, COLORREF *custom))
 SWELL_API_DEFINE(bool, SWELL_ChooseFont, (HWND, LOGFONT*))
-#endif
 
 SWELL_API_DEFINE(bool, IsWindowEnabled, (HWND))
 
